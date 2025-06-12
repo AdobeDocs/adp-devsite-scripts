@@ -31,7 +31,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     const theFilePath = `${pathPrefix}/${file}`;
     const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
-    const cmd = `curl -X${httpMethod} -vi ${args} ${url}`;
+    const cmd = `curl -X${httpMethod} -vif ${args} ${url}`;
 
     exec(cmd, (error, execOut, execErr) => {
       if (error) {
@@ -49,7 +49,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     const theFilePath = `${pathPrefix}/${file}`;
     const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
-    const deleteCmd = `curl -XDELETE -vi ${args} ${deleteUrl}`;
+    const deleteCmd = `curl -XDELETE -vif ${args} ${deleteUrl}`;
 
 
     exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
