@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { exec } = require('child_process');
 
 module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, pathPrefix }) => {
   let httpMethod, edsSiteEnv, codeRepoBranch, args;
@@ -33,7 +33,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
     const cmd = `curl -X${httpMethod} -vif ${args} ${url}`;
 
-    execSync(cmd, (error, execOut, execErr) => {
+    exec(cmd, (error, execOut, execErr) => {
       if (error) {
         console.error(`::group:: Error ${theFilePath} \n${execErr} \n::endgroup::`)
         return;
@@ -52,7 +52,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const deleteCmd = `curl -XDELETE -vif ${args} ${deleteUrl}`;
 
 
-    execSync(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
+    exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
       if (deleteError) {
         console.error(`::group:: Deleting error ${theFilePath} \n${deleteExecErr} \n::endgroup::`)
         return;
