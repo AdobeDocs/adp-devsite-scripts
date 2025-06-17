@@ -35,7 +35,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     exec(cmd, (error, execOut, execErr) => {
       if (error) {
-        console.error(`::group:: Error ${theFilePath} \n${execErr} \n::endgroup::`)
+        console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`)
         return;
       }
 
@@ -54,7 +54,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
       if (deleteError) {
-        console.error(`::group:: Deleting error ${theFilePath} \n${deleteExecErr} \n::endgroup::`)
+        console.error(`::group:: Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n::endgroup::`)
         return;
       }
 
