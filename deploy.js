@@ -26,6 +26,11 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   }
 
   changes.forEach((file) => {
+    if (!file.endsWith('.md') && !file.endsWith('.json')) {
+      console.error(`::group:: Skipping ${file} \n Only file types .md or .json file are allowed ::endgroup::`);
+      return;
+    }
+
     // have to pop src/pages from the file path
     file = file.replace('src/pages/', '');
 
@@ -44,6 +49,11 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   });
 
   deletions.forEach((file) => {
+    if (!file.endsWith('.md') && !file.endsWith('.json')) {
+      console.error(`::group:: Skipping ${file} \n Only file types .md or .json file are allowed ::endgroup::`);
+      return;
+    }
+
     // have to pop src/pages from the file path
     file = file.replace('src/pages/', '');
 
