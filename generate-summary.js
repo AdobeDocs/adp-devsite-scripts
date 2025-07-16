@@ -42,11 +42,11 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     exec(cmd, (error, execOut, execErr) => {
       if (error) {
-        console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`)
+        console.error(`::group:: Error ${theFilePath} \nThe command: ${cmdNoApi} \n${execOut} \n${execErr} \n::endgroup::`)
         return;
       }
 
-      console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} \n${execOut} \n::endgroup::`);
+      console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmdNoApi} \n${execOut} \n::endgroup::`);
     });
   
     // // have to pop src/pages from the file path
