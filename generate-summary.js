@@ -26,13 +26,8 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const theFilePath = `${pathPrefix}/${path.parse(file).name}`;
     const pageUrl = `${branch}--${edsSiteEnv}--adobedocs.aem.page${theFilePath}`;
 
-    console.log(`page url: ${pageUrl}`);
-
     const aiQuery = `${pageUrl} Generate a summary in bulleted list form in 100 words of less`;
     const payload = `--data '{\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"${aiQuery}\"}]}],\"temperature\":1,\"top_p\":1,\"max_tokens\":800}'`;
-
-    console.log(`aiQuery: ${aiQuery}`);
-    console.log(`payload: ${payload}`);
 
     const url = `--location 'https://ioevents-openai-test.openai.azure.com/openai/deployments/gpt-4.1-mini/chat/completions?api-version=2025-01-01-preview'`;
     const contentType = `--header 'Content-Type: application/json'`;
