@@ -29,14 +29,14 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     console.log(`page url: ${pageUrl}`);
 
     const aiQuery = `${pageUrl} Generate a summary in bulleted list form in 100 words of less`;
-    const payload = `{\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"${aiQuery}\"}]}],\"temperature\":1,\"top_p\":1,\"max_tokens\":800}`;
+    const payload = `--data '{\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"${aiQuery}\"}]}],\"temperature\":1,\"top_p\":1,\"max_tokens\":800}'`;
 
     console.log(`aiQuery: ${aiQuery}`);
     console.log(`payload: ${payload}`);
 
-    const url = `https://ioevents-openai-test.openai.azure.com/openai/deployments/gpt-4.1-mini/chat/completions?api-version=2025-01-01-preview`;
-    const contentType = `-H "Content-Type: application/json"`;
-    const apiKey = `-H "api-key: ${process.env.ADP_CHATGPT_API_KEY}"`;
+    const url = `--location 'https://ioevents-openai-test.openai.azure.com/openai/deployments/gpt-4.1-mini/chat/completions?api-version=2025-01-01-preview'`;
+    const contentType = `--header 'Content-Type: application/json'`;
+    const apiKey = `--header 'api-key: ${process.env.ADP_CHATGPT_API_KEY}'`;
     const cmdNoApi = `curl ${url} ${contentType} ${payload}`;
     const cmd = `curl ${url} ${contentType} ${apiKey} ${payload}`;
 
