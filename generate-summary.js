@@ -32,16 +32,16 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const url = `--location 'https://ioevents-openai-test.openai.azure.com/openai/deployments/gpt-4.1-mini/chat/completions?api-version=2025-01-01-preview'`;
     const contentType = `--header 'Content-Type: application/json'`;
     const apiKey = `--header 'api-key: ${process.env.ADP_CHATGPT_API_KEY}'`;
-    const cmdNoApi = `curl ${url} ${contentType} ${payload}`;
+    const cmdClean = `curl ${url} ${contentType} --header 'api-key: ***' ${payload}`;
     const cmd = `curl ${url} ${contentType} ${apiKey} ${payload}`;
 
     exec(cmd, (error, execOut, execErr) => {
       if (error) {
-        console.error(`::group:: Error ${theFilePath} \nThe command: ${cmdNoApi} \n${execOut} \n${execErr} \n::endgroup::`)
+        console.error(`::group:: Error ${theFilePath} \nThe command: ${cmdClean} \n${execOut} \n${execErr} \n::endgroup::`)
         return;
       }
 
-      console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmdNoApi} \n${execOut} \n::endgroup::`);
+      console.log(`::group:: Running generate summary AI on ${theFilePath} \nThe command: ${cmdClean} \n${execOut} \n::endgroup::`);
     });
   
     // // have to pop src/pages from the file path
