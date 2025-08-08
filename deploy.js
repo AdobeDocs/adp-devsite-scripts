@@ -44,8 +44,6 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         core.notice(`Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n`);
         return;
       }
-      console.log('is this executing????');
-      core.notice('hello world!');
       console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} \n${execOut} \n::endgroup::`);
     });
   });
