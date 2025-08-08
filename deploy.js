@@ -50,7 +50,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
 
         if (error) {
-          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${execErr}`]);
+          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
         } else {
           summaryData.push([`${theFilePath}`, `Success`, `HTTP ${httpStatus} - ${operation} completed`]);
@@ -85,7 +85,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
 
         if (deleteError) {
-          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${deleteExecErr}`]);
+          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n::endgroup::`);
         } else {
           summaryData.push([`${theFilePath}`, `Success`, `HTTP ${httpStatus} - Delete ${operation} completed`]);
