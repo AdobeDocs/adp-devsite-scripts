@@ -41,15 +41,19 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     const theFilePath = `${pathPrefix}/${file}`;
     const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
-    const cmd = `curl -X${httpMethod} -vif ${args} ${url}`;
+    const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
 
     const promise = new Promise((resolve) => {
       exec(cmd, (error, execOut, execErr) => {
+        // Extract HTTP status code from curl output
+        const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
+        const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
+
         if (error) {
-          summaryData.push([`${theFilePath}`, `Error`, `${execErr}`]);
+          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${execErr}`]);
           console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
         } else {
-          summaryData.push([`${theFilePath}`, `Success`, `${operation} completed`]);
+          summaryData.push([`${theFilePath}`, `Success`, `HTTP ${httpStatus} - ${operation} completed`]);
           console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} \n${execOut} \n::endgroup::`);
         }
         resolve();
@@ -72,15 +76,19 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     const theFilePath = `${pathPrefix}/${file}`;
     const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
-    const deleteCmd = `curl -XDELETE -vif ${args} ${deleteUrl}`;
+    const deleteCmd = `curl -XDELETE -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
 
     const promise = new Promise((resolve) => {
       exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
+        // Extract HTTP status code from curl output
+        const statusMatch = deleteExecOut.match(/HTTP_STATUS:(\d+)/);
+        const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
+
         if (deleteError) {
-          summaryData.push([`${theFilePath}`, `Error`, `${deleteExecErr}`]);
+          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${deleteExecErr}`]);
           console.error(`::group:: Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n::endgroup::`);
         } else {
-          summaryData.push([`${theFilePath}`, `Success`, `Delete ${operation} completed`]);
+          summaryData.push([`${theFilePath}`, `Success`, `HTTP ${httpStatus} - Delete ${operation} completed`]);
           console.log(`::group:: Deleting ${operation} on ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n::endgroup::`);
         }
         resolve();
@@ -97,7 +105,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   const tableHeader = [{ data: 'File', header: true }, { data: 'Deploy Status', header: true }, { data: 'Notes', header: true }];
   const tableContent = [tableHeader, ...summaryData];
   core.summary
-    .addHeading('Deployment Summary')
+    .addHeading(`Operation: ${operation}`)
     .addTable(tableContent)
     .write();
 }
