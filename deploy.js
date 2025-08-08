@@ -29,7 +29,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
   changes.forEach((file) => {
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
-      summaryData.append([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
+      summaryData.push([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
       return;
     }
@@ -43,7 +43,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     exec(cmd, (error, execOut, execErr) => {
       if (error) {
-        summaryData.append([`${theFilePath}`, `Error`, `${execErr}`]);
+        summaryData.push([`${theFilePath}`, `Error`, `${execErr}`]);
         console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
         return;
       }
@@ -54,7 +54,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
   deletions.forEach((file) => {
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
-      summaryData.append([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
+      summaryData.push([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
       return;
     }
@@ -69,7 +69,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
       if (deleteError) {
-        summaryData.append([`${theFilePath}`, `Error`, `${deleteExecErr}`]);
+        summaryData.push([`${theFilePath}`, `Error`, `${deleteExecErr}`]);
         console.error(`::group:: Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n::endgroup::`)
         return;
       }
