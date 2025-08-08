@@ -25,8 +25,11 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     args = '';
   }
 
+  let summaryData = [];
+
   changes.forEach((file) => {
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
+      summaryData.append([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
       return;
     }
@@ -40,16 +43,18 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     exec(cmd, (error, execOut, execErr) => {
       if (error) {
+        summaryData.append([`${theFilePath}`, `Error`, `${execErr}`]);
         console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
-        core.notice(`Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n`);
         return;
       }
+
       console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} \n${execOut} \n::endgroup::`);
     });
   });
 
   deletions.forEach((file) => {
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
+      summaryData.append([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
       return;
     }
@@ -64,12 +69,20 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
       if (deleteError) {
+        summaryData.append([`${theFilePath}`, `Error`, `${deleteExecErr}`]);
         console.error(`::group:: Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n::endgroup::`)
-        core.notice(`Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n`);
         return;
       }
 
       console.log(`::group:: Deleting ${operation} on ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n::endgroup::`);
     });
   });
+
+  // write out summary for action
+  const tableHeader = [{ data: 'File', header: true }, { data: 'Deploy Status', header: true }, { data: 'Notes' }];
+  const tableContent = [tableHeader, ...summaryData];
+  core.summary
+  .addHeading('Deployment Summary')
+  .addTable(tableContent)
+  .write();
 }
