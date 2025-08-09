@@ -31,7 +31,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   // Process changes
   changes.forEach((file) => {
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
-      summaryData.push([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
+      summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
       return;
     }
@@ -50,10 +50,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
 
         if (error) {
-          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${operation} failed`]);
+          summaryData.push([`${theFilePath}`, `❌ Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
         } else {
-          summaryData.push([`${theFilePath}`, `Success`, `HTTP ${httpStatus} - ${operation} completed`]);
+          summaryData.push([`${theFilePath}`, `✅ Success`, `HTTP ${httpStatus} - ${operation} completed`]);
           console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} \n${execOut} \n::endgroup::`);
         }
         resolve();
@@ -66,7 +66,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   // Process deletions
   deletions.forEach((file) => {
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
-      summaryData.push([`${file}`, `Skipped`, `Only .md or .json files are allowed`]);
+      summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
       return;
     }
@@ -85,10 +85,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
 
         if (deleteError) {
-          summaryData.push([`${theFilePath}`, `Error`, `HTTP ${httpStatus} - ${operation} failed`]);
+          summaryData.push([`${theFilePath}`, `❌ Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n::endgroup::`);
         } else {
-          summaryData.push([`${theFilePath}`, `Success`, `HTTP ${httpStatus} - Delete ${operation} completed`]);
+          summaryData.push([`${theFilePath}`, `✅ Success`, `HTTP ${httpStatus} - Delete ${operation} completed`]);
           console.log(`::group:: Deleting ${operation} on ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n::endgroup::`);
         }
         resolve();
@@ -100,6 +100,20 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
   // Wait for all operations to complete before writing summary
   await Promise.all(pendingOperations);
+
+  // Sort summaryData: Error first, then Success, then Skipped
+  summaryData.sort((a, b) => {
+    const statusA = a[1]; // Deploy Status column
+    const statusB = b[1]; // Deploy Status column
+
+    const statusOrder = {
+      '❌ Error': 0,
+      '✅ Success': 1,
+      '⚠️ Skipped': 2
+    };
+
+    return statusOrder[statusA] - statusOrder[statusB];
+  });
 
   // write out summary for action
   const tableHeader = [{ data: 'File', header: true }, { data: 'Deploy Status', header: true }, { data: 'Notes', header: true }];
