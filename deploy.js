@@ -116,7 +116,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   });
 
   // write out summary for action
-  const tableHeader = [{ data: 'File', header: true }, { data: 'Deploy Status', header: true }, { data: 'Notes', header: true }];
+  const tableHeader = [{ data: 'Upload File Path', header: true }, { data: 'Deploy Status', header: true }, { data: 'Notes', header: true }];
   const tableContent = [tableHeader, ...summaryData];
   core.summary
     .addHeading(`Operation: ${operation}`)
