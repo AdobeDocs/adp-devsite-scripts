@@ -1,39 +1,51 @@
 // DOCS: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#get-repository-content
-async function getFileContent(owner, repo, path, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function getFileContent(owner, repo, path) {
     try{
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
             method: 'GET',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${token}`
+                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
             }
         });
 
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to get file content meta ${path}: ${response.status} - ${text}`);
+        }
+
         const data = await response.json();
-        const fileContent = await fetch(data.download_url, {
+        const rawRes = await fetch(data.download_url, {
             headers: {
                 'accept': 'application/vnd.github.v3.raw',
-                'authorization': `Bearer ${token}`
-                }
-            }).then(res => res.text());
-            return fileContent;
+                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+            }
+        });
+        if (!rawRes.ok) {
+            const text = await rawRes.text();
+            throw new Error(`Failed to download raw file ${path}: ${rawRes.status} - ${text}`);
+        }
+        const fileContent = await rawRes.text();
+        return fileContent;
     } catch (error) {
         console.error('Error getting file content:', error);
         throw error;
     }
 }
 
-async function getFileContentByContentURL(contentURL, githubToken){
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function getFileContentByContentURL(contentURL){
     try{
         const response = await fetch(contentURL, {
             method: 'GET',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${token}`
+                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
             }
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to get file by content URL: ${response.status} - ${text}`);
+        }
         return response.text();
     } catch (error) {
         console.error('Error getting file content by content URL:', error);
@@ -43,14 +55,13 @@ async function getFileContentByContentURL(contentURL, githubToken){
 
 
 // DOCS: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#get-a-reference
-async function getLatestCommit(owner, repo, ref, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function getLatestCommit(owner, repo, ref) {
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/${ref}`, {
             method: 'GET',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${token}`
+                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
             }
         });
 
@@ -66,12 +77,11 @@ async function getLatestCommit(owner, repo, ref, githubToken) {
 }
 
 // DOCS: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#create-a-reference
-async function createBranch(owner, repo, branchRef, baseRefSha, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function createBranch(owner, repo, branchRef, baseRefSha) {
     try {
         // Try to get the existing branch
         try {
-            const existingBranch = await getLatestCommit(owner, repo, branchRef, token);
+            const existingBranch = await getLatestCommit(owner, repo, branchRef);
             return existingBranch;
         } catch (error) {
             // If branch doesn't exist, create it
@@ -79,7 +89,7 @@ async function createBranch(owner, repo, branchRef, baseRefSha, githubToken) {
                 method: 'POST',
                 headers: {
                     'accept': 'application/vnd.github+json',
-                    'authorization': `Bearer ${token}`
+                    'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
                 },
                 body: JSON.stringify({
                     ref: `refs/${branchRef}`,
@@ -101,14 +111,13 @@ async function createBranch(owner, repo, branchRef, baseRefSha, githubToken) {
 
 // DOCS: https://docs.github.com/en/rest/git/blobs?apiVersion=2022-11-28#create-a-blob
 // Blob is a file change record  in git
-async function createBlob(owner, repo, content, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function createBlob(owner, repo, content) {
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/blobs`, {
             method: 'POST',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${token}`,
+                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
@@ -117,6 +126,10 @@ async function createBlob(owner, repo, content, githubToken) {
             })
         });
 
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create blob: ${response.status} - ${text}`);
+        }
         return response.json();
 
     } catch (error) {
@@ -127,14 +140,13 @@ async function createBlob(owner, repo, content, githubToken) {
 
 // DOCS: https://docs.github.com/en/rest/git/trees?apiVersion=2022-11-28#create-a-tree
 // Tree is a collection of blobs
-async function createTree(owner, repo, branchRefSha, treeArray, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function createTree(owner, repo, branchRefSha, treeArray) {
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
             method: 'POST',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${token}`,
+                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
@@ -142,6 +154,10 @@ async function createTree(owner, repo, branchRefSha, treeArray, githubToken) {
                 tree: treeArray
             })
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create tree: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error creating tree:', error);
@@ -150,14 +166,13 @@ async function createTree(owner, repo, branchRefSha, treeArray, githubToken) {
 }
 
 // DOCS: https://docs.github.com/en/rest/git/commits?apiVersion=2022-11-28#create-a-commit
-async function commitChanges(owner, repo, treeSha, parentCommitSha, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function commitChanges(owner, repo, treeSha, parentCommitSha) {
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
             method: 'POST',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${token}`,
+                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
@@ -181,14 +196,13 @@ async function commitChanges(owner, repo, treeSha, parentCommitSha, githubToken)
 }
 
 // DOCS: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#update-a-reference
-async function pushCommit(owner, repo, branchRef, commitSha, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function pushCommit(owner, repo, branchRef, commitSha) {
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/${branchRef}`, {
             method: 'PATCH',
             headers: {
                 'Accept': 'application/vnd.github+json',
-                'Authorization': `Bearer ${token}`,
+                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -210,14 +224,13 @@ async function pushCommit(owner, repo, branchRef, commitSha, githubToken) {
 }
 
 // DOCS: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#create-a-pull-request
-async function createPR(owner, repo, headRef, baseRef, githubToken) {
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function createPR(owner, repo, headRef, baseRef) {
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
             method: 'POST',
             headers: {
                 'Accept': 'application/vnd.github+json',
-                'Authorization': `Bearer ${token}`,
+                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -226,6 +239,10 @@ async function createPR(owner, repo, headRef, baseRef, githubToken) {
                 base: baseRef
             })
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create PR: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error creating PR:', error);
@@ -233,16 +250,19 @@ async function createPR(owner, repo, headRef, baseRef, githubToken) {
     }
 }
 
-async function getFilesInPR(owner, repo, prNumber, githubToken){
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function getFilesInPR(owner, repo, prNumber){
     try{
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files`, {
             method: 'GET',
             headers: {
                 'Accept': 'application/vnd.github.v3+json',
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`
             }
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to get PR files: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error getting files in PR:', error);
@@ -251,14 +271,13 @@ async function getFilesInPR(owner, repo, prNumber, githubToken){
 }
 
 // DOCS: https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#create-a-review-for-a-pull-request
-async function createReview(owner, repo, prNumber, comments, githubToken){
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function createReview(owner, repo, prNumber, comments){
     try{
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`, {
             method: 'POST',
             headers: {
                 'Accept': 'application/vnd.github+json',
-                'Authorization': `Bearer ${token}`,
+                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -267,6 +286,10 @@ async function createReview(owner, repo, prNumber, comments, githubToken){
                 comments: comments
             })
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create review: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error creating review:', error);

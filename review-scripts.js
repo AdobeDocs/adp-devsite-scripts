@@ -1,12 +1,18 @@
 const fs = require('fs');
 const { hasMetadata } = require('./file-operation');
+const matter = require('gray-matter');
 const { getFileContentByContentURL, getFilesInPR, createReview } = require('./github-api');
+
+const owner = "AdobeDocs";
+const repo = "adp-devsite-github-actions-test";
+
+const prNumber = process.env.PR_ID;
 
 // File content utilities
 function readAiContent() {
     try {
         const aiContent = fs.readFileSync('ai_content.txt', 'utf8');
-        
+
         // Split content by file markers
         const fileContents = aiContent.split(/--- File: (?=.*? ---)/);
         // Remove the first empty element if exists
@@ -38,16 +44,15 @@ function readAiContent() {
 }
 
 function findMetadataEnd(content) {
-    const lines = content.split('\n');
-    let dashCount = 0;
-    for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim() === '---') {
-            dashCount++;
-            if (dashCount === 2) {
-                return i + 1;
-            }
+    try {
+        const parsed = matter(content);
+        if (parsed.matter && parsed.matter.trim().length > 0) {
+            // Count how many lines the frontmatter occupies (including closing ---)
+            const fm = `---\n${parsed.matter}\n---`;
+            const fmLines = fm.split('\n').length;
+            return fmLines + 0; // metadata ends at this line
         }
-    }
+    } catch (_e) {}
     return 0;
 }
 
@@ -57,7 +62,7 @@ function findMetadataEnd(content) {
 function prepareReviewComment(targetFile, content, suggestion) {
     const firstLine = content.split('\n')[0];
     const hasFileMetadata = hasMetadata(content);
-    
+
     // if has metadata, replace it
     if (hasFileMetadata) {
         const metadataEnd = findMetadataEnd(content);
@@ -70,7 +75,7 @@ function prepareReviewComment(targetFile, content, suggestion) {
             body: `\`\`\`suggestion\n${suggestion}\n\`\`\``
         };
     }
-    
+
     // if no metadata, add it to the first line
     return {
         path: targetFile.filename,
@@ -81,12 +86,12 @@ function prepareReviewComment(targetFile, content, suggestion) {
 }
 
 
-module.exports = async ({ core, githubToken, prId, owner, repo }) => {
+async function reviewPR() {
     try {
         // Read AI content for all files
         const files = readAiContent();
 
-        const PRFiles = await getFilesInPR(owner, repo, prId, githubToken);
+        const PRFiles = await getFilesInPR(owner, repo, prNumber);
 
         // Process each file and prepare comments
         const comments = [];
@@ -97,7 +102,7 @@ module.exports = async ({ core, githubToken, prId, owner, repo }) => {
                 continue;
             }
 
-            const content = await getFileContentByContentURL(targetFile.raw_url, githubToken);
+            const content = await getFileContentByContentURL(targetFile.raw_url);
 
             // Prepare comment for this file
             const comment = prepareReviewComment(targetFile, content, suggestion);
@@ -109,7 +114,7 @@ module.exports = async ({ core, githubToken, prId, owner, repo }) => {
         }
 
         // Create single review with all comments
-        const reviewData = await createReview(owner, repo, prId, comments, githubToken);
+        const reviewData = await createReview(owner, repo, prNumber, comments);
 
         console.log('Review created successfully:', {
             id: reviewData.id,
@@ -120,4 +125,6 @@ module.exports = async ({ core, githubToken, prId, owner, repo }) => {
     } catch (error) {
         console.error('Error in reviewPR:', error.message);
     }
-};
+}
+
+reviewPR();

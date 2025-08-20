@@ -1,8 +1,13 @@
 const fs = require('fs');
 const { getFileContent, getLatestCommit, createBranch, createBlob, createTree, commitChanges, pushCommit, createPR } = require('./github-api');
-const { hasMetadata } = require('./file-operation');
+const { hasMetadata, replaceOrPrependFrontmatter } = require('./file-operation');
 
-async function processAIContent(owner, repo, githubToken) {
+const owner = "AdobeDocs";
+const repo = "adp-devsite-github-actions-test";
+const branchRef = "heads/ai-metadata";
+const mainRef = "heads/main";
+
+async function processAIContent() {
     let tree = [];
     try {
         // Read the ai_content.txt file
@@ -23,16 +28,9 @@ async function processAIContent(owner, repo, githubToken) {
             const [, path, suggestion] = pathMatch;
 
             console.log("path", path);
-            let fileContent = await getFileContent(owner, repo, path, githubToken);
-
-            if (hasMetadata(fileContent)) {
-                const metadataEnd = fileContent.indexOf("---", fileContent.indexOf("---") + 1);
-                fileContent = suggestion + fileContent.slice(metadataEnd + 3);
-            }
-            else {
-                fileContent = suggestion + "\n" + fileContent
-            }
-            let blob = await createBlob(owner, repo, fileContent, githubToken);
+            let fileContent = await getFileContent(owner, repo, path);
+            fileContent = replaceOrPrependFrontmatter(fileContent, suggestion.trim());
+            let blob = await createBlob(owner, repo, fileContent);
             tree.push({ path: path, mode: '100644', type: 'blob', sha: blob.sha });
         }
 
@@ -44,43 +42,34 @@ async function processAIContent(owner, repo, githubToken) {
 }
 
 
-module.exports = async ({ core, githubToken, owner, repo }) => {
-    // Use provided values or fallback to defaults for backwards compatibility
-    const ownerName = owner || "AdobeDocs";
-    const repoName = repo || "adp-devsite-github-actions-test";
-    const branchRef = "heads/ai-metadata";
-    const mainRef = "heads/main";
-    const token = githubToken || process.env.GITHUB_TOKEN;
+async function main() {
 
-    try {
-        // get latest commit sha from main branch
-        const latestCommit = await getLatestCommit(ownerName, repoName, mainRef, token);
+    // get latest commit sha from main branch
+    const latestCommit = await getLatestCommit(owner, repo, mainRef);
 
-        // create a new branch from the latest commit
-        const createdBranch = await createBranch(ownerName, repoName, branchRef, latestCommit.object.sha, token);
+    // create a new branch from the latest commit
+    const createdBranch = await createBranch(owner, repo, branchRef, latestCommit.object.sha);
 
-        const treeArray = await processAIContent(ownerName, repoName, token);
+    // get the tree SHA from the latest commit
+    const baseCommitSha = createdBranch.object.sha;
+    const baseCommitResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits/${baseCommitSha}`, {
+        headers: {
+            'accept': 'application/vnd.github+json',
+            'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+        }
+    }).then(res => res.json());
+    const baseTreeSha = baseCommitResponse.tree.sha;
 
-        const tree = await createTree(ownerName, repoName, createdBranch.object.sha, treeArray, token);
+    const treeArray = await processAIContent();
 
-        const commit = await commitChanges(ownerName, repoName, tree.sha, createdBranch.object.sha, token);
+    const tree = await createTree(owner, repo, baseTreeSha, treeArray);
 
-        const pushCommitResult = await pushCommit(ownerName, repoName, branchRef, commit.sha, token);
+    const commit = await commitChanges(owner, repo, tree.sha, createdBranch.object.sha);
 
-        const pr = await createPR(ownerName, repoName, "ai-metadata", "main", token);
+    const pushCommitResult = await pushCommit(owner, repo, branchRef, commit.sha);
 
-        console.log('PR created successfully:', pr);
-    } catch (error) {
-        console.error('Error in create-pr-scripts:', error);
-        throw error;
-    }
-};
-
-// Keep backwards compatibility - if run directly, use environment variables
-if (require.main === module) {
-    module.exports({ 
-        githubToken: process.env.GITHUB_TOKEN,
-        owner: "AdobeDocs",
-        repo: "adp-devsite-github-actions-test"
-    });
+    const pr = await createPR(owner, repo, "ai-metadata", "main");
 }
+
+main();
+
