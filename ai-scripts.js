@@ -1,9 +1,6 @@
 const fs = require('fs');
 const { hasMetadata } = require('./file-operation');
 
-const openAIEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-const openAIAPIKey = process.env.AZURE_OPENAI_API_KEY;
-
 function determineComplexity(text) {
   const length = (text || '').length;
   const headings = (text.match(/^#+\s/mg) || []).length;
@@ -206,16 +203,21 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
   return `--- File: ${filepath} ---\n${aiContent}\n`;
 }
 
-// Main function to read pr_content.txt and generate metadata
-async function processContent(filename) {
-  if (!openAIEndpoint || !openAIAPIKey) {
-    console.error('Missing required environment variables: AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY');
+// Main function to read content and generate metadata
+module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName }) => {
+  if (!azureOpenAIEndpoint || !azureOpenAIAPIKey) {
+    console.error('Missing required parameters: azureOpenAIEndpoint or azureOpenAIAPIKey');
+    return;
+  }
+
+  if (!fileName) {
+    console.error('Missing required parameter: fileName must be specified');
     return;
   }
 
   try {
-    let content = fs.readFileSync(filename, 'utf8');
-    console.log(`Successfully read content from ${filename}`);
+    let content = fs.readFileSync(fileName, 'utf8');
+    console.log(`Successfully read content from ${fileName}`);
 
     // Split content by file markers
     const fileContents = content.split(/--- File: (?=.*? ---)/);
@@ -243,26 +245,50 @@ async function processContent(filename) {
         const parts = cleanContent.split('---');
         const metadata = parts.slice(1, 2).join('---').trim();
         const fullContent = parts.slice(2).join('---').trim();
-        const edited = await EditMetadata(openAIEndpoint, openAIAPIKey, filePath, metadata, fullContent, faqCount);
+        const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount);
         const ensured = ensureTitleInFrontmatterBlock(edited, h1);
-        allGeneratedContent += `--- File: ${filePath} ---\n${ensured}\n`;
+        allGeneratedContent += ensured;
       } else {
-        const fm = await createMetadata(openAIEndpoint, openAIAPIKey, filePath, cleanContent, faqCount);
+        const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount);
         const ensured = ensureTitleInFrontmatterBlock(fm, h1);
-        allGeneratedContent += `--- File: ${filePath} ---\n${ensured}\n`;
+        allGeneratedContent += ensured;
       }
     }
 
-    if (process.env.DRY_RUN === '1') {
-      console.log(allGeneratedContent);
-    } else {
-      fs.writeFileSync('ai_content.txt', allGeneratedContent, 'utf8');
-      console.log('Successfully wrote all content to ai_content.txt');
-    }
+    fs.writeFileSync('ai_content.txt', allGeneratedContent, 'utf8');
+    console.log('Successfully wrote all content to ai_content.txt');
 
   } catch (error) {
     console.error('Error processing content:', error);
   }
-}
+};
 
-processContent(process.env.FILE_NAME);
+// Keep backwards compatibility - if run directly, use environment variables
+if (require.main === module) {
+    const azureOpenAIEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const azureOpenAIAPIKey = process.env.AZURE_OPENAI_API_KEY;
+    const fileName = process.env.FILE_NAME;
+    
+    if (!azureOpenAIEndpoint) {
+        console.error('Error: AZURE_OPENAI_ENDPOINT environment variable must be set when running directly');
+        process.exit(1);
+    }
+    if (!azureOpenAIAPIKey) {
+        console.error('Error: AZURE_OPENAI_API_KEY environment variable must be set when running directly');
+        process.exit(1);
+    }
+    if (!fileName) {
+        console.error('Error: FILE_NAME environment variable must be set when running directly');
+        process.exit(1);
+    }
+    
+    module.exports({
+        core: null,
+        azureOpenAIEndpoint,
+        azureOpenAIAPIKey,
+        fileName
+    }).catch(error => {
+        console.error('Error:', error.message);
+        process.exit(1);
+    });
+}

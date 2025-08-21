@@ -1,8 +1,3 @@
-const owner = "AdobeDocs";
-const repo = "adp-devsite-github-actions-test";
-
-const githubToken = process.env.GITHUB_TOKEN;
-
 const fs = require('fs');
 
 // List of file extensions to skip (images and binary files)
@@ -12,13 +7,27 @@ const SKIP_EXTENSIONS = [
     '.pdf', '.zip', '.tar', '.gz', '.json'
 ];
 
-async function fetchMainBranchContent() {
+module.exports = async ({ core, githubToken, owner, repo }) => {
+    // Validate required parameters
+    if (!repo) {
+        throw new Error('Missing required parameter: repo must be specified');
+    }
+    
+    // Use provided values or fallback to defaults where appropriate
+    const ownerName = owner || "AdobeDocs";
+    const repoName = repo;
+    const token = githubToken || process.env.GITHUB_TOKEN;
+
+    if (!token) {
+        throw new Error('Missing required parameter: githubToken must be provided or GITHUB_TOKEN environment variable must be set');
+    }
+
     try {
         // Recursively get all files in src/pages directory
-        const contentsResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/src/pages`, {
+        const contentsResponse = await fetch(`https://api.github.com/repos/${ownerName}/${repoName}/contents/src/pages`, {
             headers: {
                 'Accept': 'application/vnd.github.v3+json',
-                'Authorization': `Bearer ${githubToken}`
+                'Authorization': `Bearer ${token}`
             }
         });
 
@@ -31,10 +40,10 @@ async function fetchMainBranchContent() {
 
         // Process directories and files recursively
         async function processPath(path) {
-            const pathResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+            const pathResponse = await fetch(`https://api.github.com/repos/${ownerName}/${repoName}/contents/${path}`, {
                 headers: {
                     'Accept': 'application/vnd.github.v3+json',
-                    'Authorization': `Bearer ${githubToken}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
 
@@ -60,7 +69,7 @@ async function fetchMainBranchContent() {
                     const contentResponse = await fetch(item.download_url, {
                         headers: {
                             'Accept': 'application/vnd.github.v3.raw',
-                            'Authorization': `Bearer ${githubToken}`
+                            'Authorization': `Bearer ${token}`
                         }
                     });
 
@@ -99,7 +108,27 @@ async function fetchMainBranchContent() {
 
     } catch (error) {
         console.error('Error fetching repository content:', error);
+        throw error;
     }
-}
+};
 
-fetchMainBranchContent();
+// Keep backwards compatibility - if run directly, use environment variables
+if (require.main === module) {
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    const githubToken = process.env.GITHUB_TOKEN;
+    
+    if (!repo) {
+        console.error('Error: GITHUB_REPO environment variable must be set when running directly');
+        process.exit(1);
+    }
+    
+    module.exports({ 
+        githubToken,
+        owner,
+        repo
+    }).catch(error => {
+        console.error('Error:', error.message);
+        process.exit(1);
+    });
+}

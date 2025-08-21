@@ -1,11 +1,12 @@
 // DOCS: https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#get-repository-content
-async function getFileContent(owner, repo, path) {
+async function getFileContent(owner, repo, path, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try{
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
             method: 'GET',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+                'authorization': `Bearer ${token}`
             }
         });
 
@@ -18,7 +19,7 @@ async function getFileContent(owner, repo, path) {
         const rawRes = await fetch(data.download_url, {
             headers: {
                 'accept': 'application/vnd.github.v3.raw',
-                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+                'authorization': `Bearer ${token}`
             }
         });
         if (!rawRes.ok) {
@@ -33,13 +34,14 @@ async function getFileContent(owner, repo, path) {
     }
 }
 
-async function getFileContentByContentURL(contentURL){
+async function getFileContentByContentURL(contentURL, githubToken){
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try{
         const response = await fetch(contentURL, {
             method: 'GET',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+                'authorization': `Bearer ${token}`
             }
         });
         if (!response.ok) {
@@ -55,13 +57,14 @@ async function getFileContentByContentURL(contentURL){
 
 
 // DOCS: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#get-a-reference
-async function getLatestCommit(owner, repo, ref) {
+async function getLatestCommit(owner, repo, ref, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/${ref}`, {
             method: 'GET',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+                'authorization': `Bearer ${token}`
             }
         });
 
@@ -77,11 +80,12 @@ async function getLatestCommit(owner, repo, ref) {
 }
 
 // DOCS: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#create-a-reference
-async function createBranch(owner, repo, branchRef, baseRefSha) {
+async function createBranch(owner, repo, branchRef, baseRefSha, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try {
         // Try to get the existing branch
         try {
-            const existingBranch = await getLatestCommit(owner, repo, branchRef);
+            const existingBranch = await getLatestCommit(owner, repo, branchRef, token);
             return existingBranch;
         } catch (error) {
             // If branch doesn't exist, create it
@@ -89,7 +93,7 @@ async function createBranch(owner, repo, branchRef, baseRefSha) {
                 method: 'POST',
                 headers: {
                     'accept': 'application/vnd.github+json',
-                    'authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+                    'authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     ref: `refs/${branchRef}`,
@@ -111,13 +115,14 @@ async function createBranch(owner, repo, branchRef, baseRefSha) {
 
 // DOCS: https://docs.github.com/en/rest/git/blobs?apiVersion=2022-11-28#create-a-blob
 // Blob is a file change record  in git
-async function createBlob(owner, repo, content) {
+async function createBlob(owner, repo, content, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/blobs`, {
             method: 'POST',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+                'authorization': `Bearer ${token}`,
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
@@ -140,13 +145,14 @@ async function createBlob(owner, repo, content) {
 
 // DOCS: https://docs.github.com/en/rest/git/trees?apiVersion=2022-11-28#create-a-tree
 // Tree is a collection of blobs
-async function createTree(owner, repo, branchRefSha, treeArray) {
+async function createTree(owner, repo, branchRefSha, treeArray, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
             method: 'POST',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+                'authorization': `Bearer ${token}`,
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
@@ -166,13 +172,14 @@ async function createTree(owner, repo, branchRefSha, treeArray) {
 }
 
 // DOCS: https://docs.github.com/en/rest/git/commits?apiVersion=2022-11-28#create-a-commit
-async function commitChanges(owner, repo, treeSha, parentCommitSha) {
+async function commitChanges(owner, repo, treeSha, parentCommitSha, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
             method: 'POST',
             headers: {
                 'accept': 'application/vnd.github+json',
-                'authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+                'authorization': `Bearer ${token}`,
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
@@ -196,13 +203,14 @@ async function commitChanges(owner, repo, treeSha, parentCommitSha) {
 }
 
 // DOCS: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#update-a-reference
-async function pushCommit(owner, repo, branchRef, commitSha) {
+async function pushCommit(owner, repo, branchRef, commitSha, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/${branchRef}`, {
             method: 'PATCH',
             headers: {
                 'Accept': 'application/vnd.github+json',
-                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -224,13 +232,14 @@ async function pushCommit(owner, repo, branchRef, commitSha) {
 }
 
 // DOCS: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#create-a-pull-request
-async function createPR(owner, repo, headRef, baseRef) {
+async function createPR(owner, repo, headRef, baseRef, githubToken) {
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try {
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
             method: 'POST',
             headers: {
                 'Accept': 'application/vnd.github+json',
-                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -250,13 +259,14 @@ async function createPR(owner, repo, headRef, baseRef) {
     }
 }
 
-async function getFilesInPR(owner, repo, prNumber){
+async function getFilesInPR(owner, repo, prNumber, githubToken){
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try{
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files`, {
             method: 'GET',
             headers: {
                 'Accept': 'application/vnd.github.v3+json',
-                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`
+                'Authorization': `Bearer ${token}`
             }
         });
         if (!response.ok) {
@@ -271,13 +281,14 @@ async function getFilesInPR(owner, repo, prNumber){
 }
 
 // DOCS: https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#create-a-review-for-a-pull-request
-async function createReview(owner, repo, prNumber, comments){
+async function createReview(owner, repo, prNumber, comments, githubToken){
+    const token = githubToken || process.env.GITHUB_TOKEN;
     try{
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`, {
             method: 'POST',
             headers: {
                 'Accept': 'application/vnd.github+json',
-                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({

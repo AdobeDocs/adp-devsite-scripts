@@ -3,11 +3,6 @@ const { hasMetadata } = require('./file-operation');
 const matter = require('gray-matter');
 const { getFileContentByContentURL, getFilesInPR, createReview } = require('./github-api');
 
-const owner = "AdobeDocs";
-const repo = "adp-devsite-github-actions-test";
-
-const prNumber = process.env.PR_ID;
-
 // File content utilities
 function readAiContent() {
     try {
@@ -39,7 +34,7 @@ function readAiContent() {
         return files;
     } catch (error) {
         console.error('Error reading ai_content.txt:', error);
-        process.exit(1);
+        throw error;
     }
 }
 
@@ -58,7 +53,6 @@ function findMetadataEnd(content) {
 
 // Prepare the body of review comment
 // DOCS: https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#create-a-review-for-a-pull-request
-// FIXME: this might be moved to github-api.js? but it checks the metadata so is not pure api function, maybe its better to seperate metadata check and comments preparation.
 function prepareReviewComment(targetFile, content, suggestion) {
     const firstLine = content.split('\n')[0];
     const hasFileMetadata = hasMetadata(content);
@@ -86,23 +80,39 @@ function prepareReviewComment(targetFile, content, suggestion) {
 }
 
 
-async function reviewPR() {
+module.exports = async ({ core, githubToken, prId, owner, repo }) => {
+    // Validate required parameters
+    if (!repo) {
+        throw new Error('Missing required parameter: repo must be specified');
+    }
+    if (!prId) {
+        throw new Error('Missing required parameter: prId must be specified');
+    }
+    
+    // Use provided values or fallback to defaults where appropriate
+    const ownerName = owner || "AdobeDocs";
+    const token = githubToken || process.env.GITHUB_TOKEN;
+
+    if (!token) {
+        throw new Error('Missing required parameter: githubToken must be provided or GITHUB_TOKEN environment variable must be set');
+    }
+
     try {
         // Read AI content for all files
         const files = readAiContent();
 
-        const PRFiles = await getFilesInPR(owner, repo, prNumber);
+        const PRFiles = await getFilesInPR(ownerName, repo, prId, token);
 
         // Process each file and prepare comments
         const comments = [];
         for (const { path, suggestion } of files) {
             const targetFile = PRFiles.find(file => file.filename === path);
-            if (!targetFile) { // for safety, should not ha
+            if (!targetFile) { // for safety, should not happen
                 console.warn(`Target file ${path} not found in PR, skipping...`);
                 continue;
             }
 
-            const content = await getFileContentByContentURL(targetFile.raw_url);
+            const content = await getFileContentByContentURL(targetFile.raw_url, token);
 
             // Prepare comment for this file
             const comment = prepareReviewComment(targetFile, content, suggestion);
@@ -114,7 +124,7 @@ async function reviewPR() {
         }
 
         // Create single review with all comments
-        const reviewData = await createReview(owner, repo, prNumber, comments);
+        const reviewData = await createReview(ownerName, repo, prId, comments, token);
 
         console.log('Review created successfully:', {
             id: reviewData.id,
@@ -124,7 +134,34 @@ async function reviewPR() {
 
     } catch (error) {
         console.error('Error in reviewPR:', error.message);
+        throw error;
     }
-}
+};
 
-reviewPR();
+// Keep backwards compatibility - if run directly, use environment variables
+if (require.main === module) {
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    const prId = process.env.PR_ID;
+    const githubToken = process.env.GITHUB_TOKEN;
+    
+    if (!repo) {
+        console.error('Error: GITHUB_REPO environment variable must be set when running directly');
+        process.exit(1);
+    }
+    if (!prId) {
+        console.error('Error: PR_ID environment variable must be set when running directly');
+        process.exit(1);
+    }
+    
+    module.exports({
+        core: null,
+        githubToken,
+        prId,
+        owner,
+        repo
+    }).catch(error => {
+        console.error('Error:', error.message);
+        process.exit(1);
+    });
+}
