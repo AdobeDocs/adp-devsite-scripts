@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { getFileContent, getLatestCommit, createBranch, createBlob, createTree, commitChanges, pushCommit, createPR } = require('./github-api');
-const { hasMetadata } = require('./file-operation');
+const { hasMetadata, replaceOrPrependFrontmatter } = require('./file-operation');
 
 async function processAIContent(owner, repo, githubToken) {
     let tree = [];
@@ -24,14 +24,7 @@ async function processAIContent(owner, repo, githubToken) {
 
             console.log("path", path);
             let fileContent = await getFileContent(owner, repo, path, githubToken);
-
-            if (hasMetadata(fileContent)) {
-                const metadataEnd = fileContent.indexOf("---", fileContent.indexOf("---") + 1);
-                fileContent = suggestion + fileContent.slice(metadataEnd + 3);
-            }
-            else {
-                fileContent = suggestion + "\n" + fileContent
-            }
+            fileContent = replaceOrPrependFrontmatter(fileContent, suggestion.trim());
             let blob = await createBlob(owner, repo, fileContent, githubToken);
             tree.push({ path: path, mode: '100644', type: 'blob', sha: blob.sha });
         }
@@ -43,14 +36,22 @@ async function processAIContent(owner, repo, githubToken) {
     }
 }
 
-
 module.exports = async ({ core, githubToken, owner, repo }) => {
-    // Use provided values or fallback to defaults for backwards compatibility
+    // Validate required parameters
+    if (!repo) {
+        throw new Error('Missing required parameter: repo must be specified');
+    }
+    
+    // Use provided values or fallback to defaults where appropriate
     const ownerName = owner || "AdobeDocs";
-    const repoName = repo || "adp-devsite-github-actions-test";
+    const repoName = repo;
     const branchRef = "heads/ai-metadata";
     const mainRef = "heads/main";
     const token = githubToken || process.env.GITHUB_TOKEN;
+
+    if (!token) {
+        throw new Error('Missing required parameter: githubToken must be provided or GITHUB_TOKEN environment variable must be set');
+    }
 
     try {
         // get latest commit sha from main branch
@@ -59,9 +60,19 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
         // create a new branch from the latest commit
         const createdBranch = await createBranch(ownerName, repoName, branchRef, latestCommit.object.sha, token);
 
+        // get the tree SHA from the latest commit
+        const baseCommitSha = createdBranch.object.sha;
+        const baseCommitResponse = await fetch(`https://api.github.com/repos/${ownerName}/${repoName}/git/commits/${baseCommitSha}`, {
+            headers: {
+                'accept': 'application/vnd.github+json',
+                'authorization': `Bearer ${token}`
+            }
+        }).then(res => res.json());
+        const baseTreeSha = baseCommitResponse.tree.sha;
+
         const treeArray = await processAIContent(ownerName, repoName, token);
 
-        const tree = await createTree(ownerName, repoName, createdBranch.object.sha, treeArray, token);
+        const tree = await createTree(ownerName, repoName, baseTreeSha, treeArray, token);
 
         const commit = await commitChanges(ownerName, repoName, tree.sha, createdBranch.object.sha, token);
 
@@ -78,9 +89,22 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
 
 // Keep backwards compatibility - if run directly, use environment variables
 if (require.main === module) {
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    const githubToken = process.env.GITHUB_TOKEN;
+    
+    if (!repo) {
+        console.error('Error: GITHUB_REPO environment variable must be set when running directly');
+        process.exit(1);
+    }
+    
     module.exports({ 
-        githubToken: process.env.GITHUB_TOKEN,
-        owner: "AdobeDocs",
-        repo: "adp-devsite-github-actions-test"
+        githubToken,
+        owner,
+        repo
+    }).catch(error => {
+        console.error('Error:', error.message);
+        process.exit(1);
     });
 }
+
