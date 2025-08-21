@@ -10,14 +10,24 @@ async function getFileContent(owner, repo, path, githubToken) {
             }
         });
 
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to get file content meta ${path}: ${response.status} - ${text}`);
+        }
+
         const data = await response.json();
-        const fileContent = await fetch(data.download_url, {
+        const rawRes = await fetch(data.download_url, {
             headers: {
                 'accept': 'application/vnd.github.v3.raw',
                 'authorization': `Bearer ${token}`
-                }
-            }).then(res => res.text());
-            return fileContent;
+            }
+        });
+        if (!rawRes.ok) {
+            const text = await rawRes.text();
+            throw new Error(`Failed to download raw file ${path}: ${rawRes.status} - ${text}`);
+        }
+        const fileContent = await rawRes.text();
+        return fileContent;
     } catch (error) {
         console.error('Error getting file content:', error);
         throw error;
@@ -34,6 +44,10 @@ async function getFileContentByContentURL(contentURL, githubToken){
                 'authorization': `Bearer ${token}`
             }
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to get file by content URL: ${response.status} - ${text}`);
+        }
         return response.text();
     } catch (error) {
         console.error('Error getting file content by content URL:', error);
@@ -117,6 +131,10 @@ async function createBlob(owner, repo, content, githubToken) {
             })
         });
 
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create blob: ${response.status} - ${text}`);
+        }
         return response.json();
 
     } catch (error) {
@@ -142,6 +160,10 @@ async function createTree(owner, repo, branchRefSha, treeArray, githubToken) {
                 tree: treeArray
             })
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create tree: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error creating tree:', error);
@@ -226,6 +248,10 @@ async function createPR(owner, repo, headRef, baseRef, githubToken) {
                 base: baseRef
             })
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create PR: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error creating PR:', error);
@@ -243,6 +269,10 @@ async function getFilesInPR(owner, repo, prNumber, githubToken){
                 'Authorization': `Bearer ${token}`
             }
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to get PR files: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error getting files in PR:', error);
@@ -267,6 +297,10 @@ async function createReview(owner, repo, prNumber, comments, githubToken){
                 comments: comments
             })
         });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Failed to create review: ${response.status} - ${text}`);
+        }
         return response.json();
     } catch (error) {
         console.error('Error creating review:', error);
