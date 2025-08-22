@@ -243,7 +243,7 @@ async function createPR(owner, repo, headRef, baseRef, githubToken) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                title: '[ai-pr]Update metadata for all documentation files',
+                title: '[AI PR] Metadata Update: Generated metadata for documentation files',
                 head: headRef,
                 base: baseRef
             })
