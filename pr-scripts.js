@@ -1,6 +1,13 @@
 const { getFilesInPR } = require('./github-api');
 const fs = require('fs');
 
+// List of file extensions to skip (images and binary files)
+const SKIP_EXTENSIONS = [
+    '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
+    '.mp4', '.webm', '.mov', '.mp3', '.wav',
+    '.pdf', '.zip', '.tar', '.gz', '.json'
+];
+
 module.exports = async ({ core, prId, githubToken, owner, repo }) => {
     // Validate required parameters
     if (!repo) {
@@ -22,11 +29,23 @@ module.exports = async ({ core, prId, githubToken, owner, repo }) => {
         // fetch the files changed in this PR
         const filesData = await getFilesInPR(ownerName, repo, prId, token);
 
-        // Filter files in src/pages directory and exclude config.md
-        const pagesFiles = filesData.filter(file =>
-            file.filename.startsWith('src/pages/') &&
-            !file.filename.endsWith('config.md')
-        );
+        // Filter files in src/pages directory and exclude config.md and binary files
+        const pagesFiles = filesData.filter(file => {
+            // Must be in src/pages directory
+            if (!file.filename.startsWith('src/pages/')) return false;
+            
+            // Skip config.md files
+            if (file.filename.endsWith('config.md')) return false;
+            
+            // Skip binary/image files
+            const fileExt = file.filename.substring(file.filename.lastIndexOf('.')).toLowerCase();
+            if (SKIP_EXTENSIONS.includes(fileExt)) {
+                console.log(`Skipping binary/image file: ${file.filename}`);
+                return false;
+            }
+            
+            return true;
+        });
 
         let allContent = '';
 
@@ -40,6 +59,13 @@ module.exports = async ({ core, prId, githubToken, owner, repo }) => {
 
             if (contentResponse.ok) {
                 const content = await contentResponse.text();
+                // Skip files that look like they embed React/JSX blocks while allowing simple HTML
+                // Heuristic: skip if it contains lines starting with '<' followed by an uppercase letter (JSX components)
+                const hasJSXComponent = /\n\s*<\s*[A-Z][A-Za-z0-9]*/.test(`\n${content}`);
+                if (hasJSXComponent) {
+                    console.log(`Skipping JSX component file: ${file.filename}`);
+                    continue;
+                }
                 // append the content to allContent string with identifier "--- File: ${file.filename} ---" for further processing
                 allContent += `\n\n--- File: ${file.filename} ---\n\n${content}`;
             } else {
@@ -48,8 +74,8 @@ module.exports = async ({ core, prId, githubToken, owner, repo }) => {
         }
 
         if (pagesFiles.length === 0) {
-            console.log('No matching files found in src/pages directory (excluding config.md)');
-            allContent = 'No matching files found in src/pages directory (excluding config.md)';
+            console.log('No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)');
+            allContent = 'No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)';
         }
 
         // Write content to pr_content.txt

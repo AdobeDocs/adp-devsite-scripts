@@ -94,8 +94,8 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
         await processPath('src/pages');
 
         if (allContent === '') {
-            console.log('No matching files found in src/pages directory (excluding config.md)');
-            allContent = 'No matching files found in src/pages directory (excluding config.md)';
+            console.log('No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)');
+            allContent = 'No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)';
         }
 
         // Write content to all_pages_content.txt

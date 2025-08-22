@@ -114,7 +114,10 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
   const result = await response.json();
   const aiContent = result.choices[0].message.content;
 
-  return  `--- File: ${filepath} ---\n${aiContent}\n`;
+  // Clean any AI-generated file headers to prevent double headers
+  const cleanContent = aiContent.replace(/^--- File: .* ---\n/gm, '');
+  
+  return cleanContent;
 }
 
 async function createFAQ(endpoint, apiKey, filepath, content, faqCount) {
@@ -199,8 +202,9 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
 
   const result = await response.json();
   const aiContent = result.choices[0].message.content;
-
-  return `--- File: ${filepath} ---\n${aiContent}\n`;
+  // Clean any AI-generated file headers to prevent double headers
+  const cleanContent = aiContent.replace(/^--- File: .* ---\n/gm, '');
+  return cleanContent;
 }
 
 // Main function to read content and generate metadata
@@ -219,6 +223,20 @@ module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName
     let content = fs.readFileSync(fileName, 'utf8');
     console.log(`Successfully read content from ${fileName}`);
 
+    // Check if content is empty or contains "no files found" message
+    if (!content || content.trim() === '') {
+      throw new Error(`Input file ${fileName} is empty`);
+    }
+
+    // Check for "no files found" messages from upstream scripts
+    if (content.includes('No matching files found')) {
+      console.warn(`Warning: Upstream script reported no matching files: ${content.trim()}`);
+      const warningMessage = `--- Warning ---\nNo files were found to process by the upstream script.\nReason: ${content.trim()}\n`;
+      fs.writeFileSync('ai_content.txt', warningMessage, 'utf8');
+      console.log('Wrote warning message to ai_content.txt');
+      return;
+    }
+
     // Split content by file markers
     const fileContents = content.split(/--- File: (?=.*? ---)/);
     // Remove the first empty element if exists
@@ -226,17 +244,35 @@ module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName
       fileContents.shift();
     }
 
+    // Check if we have any valid file markers
+    if (fileContents.length === 0) {
+      throw new Error(`No valid file markers found in ${fileName}. Expected format: "--- File: path ---"`);
+    }
+
     let allGeneratedContent = '';
+    let processedFileCount = 0;
 
     for (const fileContent of fileContents) {
       if (!fileContent.trim()) continue;
 
       // Extract file path and content
       const pathMatch = fileContent.match(/(.*?) ---\n([\s\S]*)/);
-      if (!pathMatch) continue;
+      if (!pathMatch) {
+        console.warn(`Skipping invalid file content section: ${fileContent.substring(0, 100)}...`);
+        continue;
+      }
 
       const [, filePath, fileText] = pathMatch;
       const cleanContent = fileText.trim();
+      
+      if (!cleanContent) {
+        console.warn(`Skipping empty content for file: ${filePath}`);
+        continue;
+      }
+
+      console.log(`Processing file: ${filePath}`);
+      processedFileCount++;
+
       const h1 = extractH1(cleanContent);
       const complexity = determineComplexity(cleanContent);
       const faqCount = getFAQCount(complexity);
@@ -247,16 +283,25 @@ module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName
         const fullContent = parts.slice(2).join('---').trim();
         const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount);
         const ensured = ensureTitleInFrontmatterBlock(edited, h1);
-        allGeneratedContent += ensured;
+        allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       } else {
         const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount);
         const ensured = ensureTitleInFrontmatterBlock(fm, h1);
-        allGeneratedContent += ensured;
+        allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       }
     }
 
+    // Validate that we actually processed some content
+    if (processedFileCount === 0) {
+      throw new Error('No valid files were processed. Check that the input file contains properly formatted file markers.');
+    }
+
+    if (!allGeneratedContent.trim()) {
+      throw new Error('No content was generated. Check AI service connectivity and input file format.');
+    }
+
     fs.writeFileSync('ai_content.txt', allGeneratedContent, 'utf8');
-    console.log('Successfully wrote all content to ai_content.txt');
+    console.log(`Successfully wrote content for ${processedFileCount} files to ai_content.txt`);
 
   } catch (error) {
     console.error('Error processing content:', error);

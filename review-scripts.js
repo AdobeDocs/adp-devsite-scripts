@@ -8,11 +8,27 @@ function readAiContent() {
     try {
         const aiContent = fs.readFileSync('ai_content.txt', 'utf8');
         
+        // Check if content is empty
+        if (!aiContent || aiContent.trim() === '') {
+            throw new Error('ai_content.txt is empty - no content to process');
+        }
+
+        // Check for warning messages from ai-scripts.js
+        if (aiContent.includes('--- Warning ---') || aiContent.includes('No files were found to process')) {
+            console.log('AI scripts reported no files to process:', aiContent.trim());
+            throw new Error('No files were found by AI processing - skipping review creation');
+        }
+        
         // Split content by file markers using a simpler approach
         const fileContents = aiContent.split(/--- File: /);
         // Remove the first empty element if exists
         if (fileContents[0].trim() === '') {
             fileContents.shift();
+        }
+
+        // Check if we have any valid file sections
+        if (fileContents.length === 0) {
+            throw new Error('No valid file sections found in ai_content.txt');
         }
 
         const files = [];
@@ -27,11 +43,16 @@ function readAiContent() {
             }
 
             const [, path, suggestion] = pathMatch;
+            if (!path || !suggestion.trim()) {
+                console.warn(`Skipping file with empty path or content: ${path}`);
+                continue;
+            }
+            
             files.push({ path: path.trim(), suggestion: suggestion.trim() });
         }
 
         if (files.length === 0) {
-            throw new Error('Could not extract any file content from ai_content.txt');
+            throw new Error('No valid files were processed - no review comments to create');
         }
 
         return files;
@@ -162,6 +183,17 @@ module.exports = async ({ core, githubToken, prId, owner, repo }) => {
         });
 
     } catch (error) {
+        // Check if this is a "no content" error - if so, exit gracefully
+        if (error.message && (
+            error.message.includes('No files were found by AI processing') ||
+            error.message.includes('no content to process') ||
+            error.message.includes('No valid files were processed')
+        )) {
+            console.log('No content changes detected - skipping review creation');
+            console.log('Reason:', error.message);
+            return; // Exit gracefully instead of throwing
+        }
+        
         console.error('Error in reviewPR:', error.message);
         console.error('Full error:', error);
         throw error;
