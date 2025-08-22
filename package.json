@@ -1,0 +1,15 @@
+{
+  "name": "adp-devsite-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for ADP DevSite workflows",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
