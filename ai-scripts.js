@@ -70,7 +70,7 @@ function ensureTitleInFrontmatterBlock(frontmatterBlock, h1){
   return afterOpening;
 }
 
-async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
+async function createMetadata(endpoint, apiKey, filepath, content, faqCount, h1) {
   const response = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -87,9 +87,11 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
           role: "user", // user prompt: the specific task or request from the user to the AI assistant
           content: `Generate YAML frontmatter for the following content. Add faqs section with ${faqCount} items. Return ONLY the YAML frontmatter block below - nothing else.
 
+          ${h1 ? `TITLE INSTRUCTION: Use this exact H1 heading as the title: "${h1}"` : 'TITLE INSTRUCTION: Create a descriptive title since no H1 heading exists in the content'}
+
           Required format (include ONLY these fields):
           ---
-          title: [Extract from H1 heading or create descriptive title]
+          title: ${h1 ? h1 : '[Create descriptive title for the content]'}
           description: [Brief 1-2 sentence description]
           keywords:
           - [SEO keyword 1]
@@ -154,7 +156,7 @@ async function createFAQ(endpoint, apiKey, filepath, content, faqCount) {
   return aiContent;
 }
 
-async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, faqCount) {
+async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, faqCount, h1) {
   const response = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -176,9 +178,11 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
             - Each field name can appear ONLY ONCE in your response
             - Never add new field types that weren't in the original
 
+            ${h1 ? `TITLE INSTRUCTION: Use this exact H1 heading as the title: "${h1}" - do not modify or improve it` : 'TITLE INSTRUCTION: Create or improve the title since no H1 heading exists in the content'}
+
             Required format (include ONLY these fields):
             ---
-            title: [Extract from H1 heading or create descriptive title]
+            title: ${h1 ? h1 : '[Create or improve existing title]'}
             description: [Brief 1-2 sentence description]
             keywords:
             - [SEO keyword 1]
@@ -199,7 +203,7 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
 
             Return a single YAML frontmatter block with:
             1. All original fields preserved exactly
-            2. Enhanced title/description/keywords (5 total keywords for SEO)
+            2. ${h1 ? 'Title must be exactly: ' + h1 : 'Enhanced/created title'}/description/keywords (5 total keywords for SEO)
             3. New faqs section
             4. No duplicate fields
 
@@ -295,11 +299,11 @@ module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName
         const parts = cleanContent.split('---');
         const metadata = parts.slice(1, 2).join('---').trim();
         const fullContent = parts.slice(2).join('---').trim();
-        const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount);
+        const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount, h1);
         const ensured = ensureTitleInFrontmatterBlock(edited, h1);
         allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       } else {
-        const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount);
+        const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount, h1);
         const ensured = ensureTitleInFrontmatterBlock(fm, h1);
         allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       }
