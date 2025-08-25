@@ -85,26 +85,26 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
         },
         {
           role: "user", // user prompt: the specific task or request from the user to the AI assistant
-          content: `Generate YAML frontmatter for the following content in this exact format (YAML between --- markers). Generate keywords to help the page with SEO. Include a 'faqs' array with ${faqCount} items. Don't include anything that isn't in the template below:
-                ---
-                title: [Same as the heading1 content]
-                description: [Brief description of the document]
-                keywords:
-                - [Keyword 1]
-                - [Keyword 2]
-                - [Keyword 3]
-                - [Keyword 4]
-                - [Keyword 5]
-                # --- FAQs ---
-                faqs:
-                - question: [Concise question 1]
-                  answer: [Actionable, 1-3 sentence answer]
-                - question: [Concise question 2]
-                  answer: [Actionable, 1-3 sentence answer]
-                
-                Preserve other original metadata (contributors or openAPISpec)
-                ---
-                Content: ${sanitizeContent(content)}`
+          content: `Generate YAML frontmatter for the following content. Add faqs section with ${faqCount} items. Return ONLY the YAML frontmatter block below - nothing else.
+
+          Required format (include ONLY these fields):
+          ---
+          title: [Extract from H1 heading or create descriptive title]
+          description: [Brief 1-2 sentence description]
+          keywords:
+          - [SEO keyword 1]
+          - [SEO keyword 2] 
+          - [SEO keyword 3]
+          - [SEO keyword 4]
+          - [SEO keyword 5]
+          faqs - ${faqCount} questions and answers:
+          - question: [Question 1]
+            answer: [1-3 sentence answer]
+          - question: [Question 2]
+            answer: [1-3 sentence answer]
+          ---
+
+          Content: ${sanitizeContent(content)}`
         }
       ],
       max_tokens: 800,
@@ -164,37 +164,45 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
       messages: [
         {
           role: "system",
-          content: "You are an AI assistant that minimally updates YAML frontmatter: preserve other existing fields like contributors or openAPISpec, and adjust title, description, or keywords only if necessary, and add a concise 'faqs' array."
+          content: "You are an AI assistant that updates YAML frontmatter. You must preserve ALL existing fields exactly as they are. Only enhance title/description/keywords if needed and add faqs. Never duplicate fields or add new field types."
         },
         {
           role: "user",
-          content: `Review and minimally update the following YAML frontmatter based on the page content. Generate keywords to help the page with SEO. Keep all existing custom fields like contributors or openAPISpec as is. Ensure the format matches exactly and append/update a 'faqs' array with ${faqCount} items. Don't return any duplicate frontmatter categories or anything that isn't part of the template below.
-    
-            Expected format:
-              ---
-              title: [Same as the heading1 content]
-              description: [Brief description of the document]
-              keywords:
-              - [Keyword 1]
-              - [Keyword 2]
-              - [Keyword 3]
-              - [Keyword 4]
-              - [Keyword 5]
-              # --- FAQs ---
-              faqs:
-              - question: [Concise question 1]
-                answer: [Actionable, 1-3 sentence answer]
-              - question: [Concise question 2]
-                answer: [Actionable, 1-3 sentence answer]
-              
-              Preserve other original metadata (contributors or openAPISpec)
-              ---
+          content: `Update the YAML frontmatter below. CRITICAL RULES:
+            - Keep ALL existing fields exactly as they are (preserve everything from current metadata)
+            - Only modify title, description, keywords if they need improvement - keywords should be 5 total so add more if needed
+            - Add faqs section with ${faqCount} items
+            - Each field name can appear ONLY ONCE in your response
+            - Never add new field types that weren't in the original
 
-              Current metadata:
-              ${metadata}
+            Required format (include ONLY these fields):
+            ---
+            title: [Extract from H1 heading or create descriptive title]
+            description: [Brief 1-2 sentence description]
+            keywords:
+            - [SEO keyword 1]
+            - [SEO keyword 2] 
+            - [SEO keyword 3]
+            - [SEO keyword 4]
+            - [SEO keyword 5]
+            faqs - ${faqCount} questions and answers:
+            - question: [Question 1]
+              answer: [1-3 sentence answer]
+            - question: [Question 2]
+              answer: [1-3 sentence answer]
+            ---
 
-              Content to analyze:
-              ${sanitizeContent(fileContent)}`
+            Current metadata:
+            ${metadata}
+
+            Return a single YAML frontmatter block with:
+            1. All original fields preserved exactly
+            2. Enhanced title/description/keywords (5 total keywords for SEO)
+            3. New faqs section
+            4. No duplicate fields
+
+            Content to analyze:
+            ${sanitizeContent(fileContent)}`
         }
       ],
       max_tokens: 800,
