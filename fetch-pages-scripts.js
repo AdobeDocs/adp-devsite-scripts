@@ -23,8 +23,8 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
     }
 
     try {
-        // Recursively get all files in src/pages/get_started directory
-        const contentsResponse = await fetch(`https://api.github.com/repos/${ownerName}/${repoName}/contents/src/pages/get_started`, {
+        // Recursively get all files in src/pages/ directory
+        const contentsResponse = await fetch(`https://api.github.com/repos/${ownerName}/${repoName}/contents/src/pages`, {
             headers: {
                 'Accept': 'application/vnd.github.v3+json',
                 'Authorization': `Bearer ${token}`
@@ -90,12 +90,12 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
             }
         }
 
-        // Start processing from src/pages/get_started
-        await processPath('src/pages/get_started');
+        // Start processing from src/pages
+        await processPath('src/pages');
 
         if (allContent === '') {
-            console.log('No matching files found in src/pages/get_started directory (excluding config.md, binary files, and JSX components)');
-            allContent = 'No matching files found in src/pages/get_started directory (excluding config.md, binary files, and JSX components)';
+            console.log('No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)');
+            allContent = 'No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)';
         }
 
         // Write content to all_pages_content.txt

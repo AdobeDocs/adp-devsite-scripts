@@ -77,7 +77,7 @@ module.exports = async ({ core, githubToken, owner, repo, targetBranch }) => {
     // Use provided values or fallback to defaults where appropriate
     const ownerName = owner || "AdobeDocs";
     const repoName = repo;
-    const targetBranchName = targetBranch || "hackathon-test";
+    const targetBranchName = targetBranch || "main";
     
     // Generate branch name with current date/time
     const now = new Date();
