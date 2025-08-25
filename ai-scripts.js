@@ -85,7 +85,7 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
         },
         {
           role: "user", // user prompt: the specific task or request from the user to the AI assistant
-          content: `Generate YAML frontmatter for the following content in this exact format (YAML between --- markers). Generate keywords to help the page with SEO. Include a 'faqs' array with ${faqCount} items.
+          content: `Generate YAML frontmatter for the following content in this exact format (YAML between --- markers). Generate keywords to help the page with SEO. Include a 'faqs' array with ${faqCount} items. Don't include anything that isn't in the template below:
                 ---
                 title: [Same as the heading1 content]
                 description: [Brief description of the document]
@@ -168,7 +168,7 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
         },
         {
           role: "user",
-          content: `Review and minimally update the following YAML frontmatter based on the page content. Generate keywords to help the page with SEO. Keep all existing custom fields like contributors or openAPISpec as is. Ensure the format matches exactly and append/update a 'faqs' array with ${faqCount} items. Don't return any duplicate frontmatter categories.
+          content: `Review and minimally update the following YAML frontmatter based on the page content. Generate keywords to help the page with SEO. Keep all existing custom fields like contributors or openAPISpec as is. Ensure the format matches exactly and append/update a 'faqs' array with ${faqCount} items. Don't return any duplicate frontmatter categories or anything that isn't part of the template below.
     
             Expected format:
               ---
@@ -281,6 +281,7 @@ module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName
       const faqCount = getFAQCount(complexity);
 
       if (hasMetadata(cleanContent)) {
+        console.log("editing metadata")
         const parts = cleanContent.split('---');
         const metadata = parts.slice(1, 2).join('---').trim();
         const fullContent = parts.slice(2).join('---').trim();
