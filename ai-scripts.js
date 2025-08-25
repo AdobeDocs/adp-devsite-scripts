@@ -97,7 +97,8 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
           - [SEO keyword 3]
           - [SEO keyword 4]
           - [SEO keyword 5]
-          faqs - ${faqCount} questions and answers:
+         # FAQs: ${faqCount} questions and answers:
+          faqs 
           - question: [Question 1]
             answer: [1-3 sentence answer]
           - question: [Question 2]
@@ -185,7 +186,8 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
             - [SEO keyword 3]
             - [SEO keyword 4]
             - [SEO keyword 5]
-            faqs - ${faqCount} questions and answers:
+            # FAQs: ${faqCount} questions and answers:
+            faqs 
             - question: [Question 1]
               answer: [1-3 sentence answer]
             - question: [Question 2]
