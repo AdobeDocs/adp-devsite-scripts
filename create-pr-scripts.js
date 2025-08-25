@@ -68,7 +68,7 @@ async function processAIContent(owner, repo, githubToken) {
     }
 }
 
-module.exports = async ({ core, githubToken, owner, repo }) => {
+module.exports = async ({ core, githubToken, owner, repo, targetBranch }) => {
     // Validate required parameters
     if (!repo) {
         throw new Error('Missing required parameter: repo must be specified');
@@ -77,13 +77,14 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
     // Use provided values or fallback to defaults where appropriate
     const ownerName = owner || "AdobeDocs";
     const repoName = repo;
+    const targetBranchName = targetBranch || "hackathon-test";
     
     // Generate branch name with current date/time
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '-').substring(0, 19);
     const branchName = `ai-metadata-${timestamp}`;
     const branchRef = `heads/${branchName}`;
-    const mainRef = "heads/main";
+    const mainRef = `heads/${targetBranchName}`;
     const token = githubToken || process.env.GITHUB_TOKEN;
 
     if (!token) {
@@ -118,7 +119,7 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
 
         const pushCommitResult = await pushCommit(ownerName, repoName, branchRef, commit.sha, token);
 
-        const pr = await createPR(ownerName, repoName, branchName, "main", token);
+        const pr = await createPR(ownerName, repoName, branchName, targetBranchName, token);
 
         console.log('PR created successfully:', pr);
     } catch (error) {
@@ -143,6 +144,7 @@ if (require.main === module) {
     const owner = process.env.GITHUB_OWNER;
     const repo = process.env.GITHUB_REPO;
     const githubToken = process.env.GITHUB_TOKEN;
+    const targetBranch = process.env.TARGET_BRANCH;
     
     if (!repo) {
         console.error('Error: GITHUB_REPO environment variable must be set when running directly');
@@ -152,7 +154,8 @@ if (require.main === module) {
     module.exports({ 
         githubToken,
         owner,
-        repo
+        repo,
+        targetBranch
     }).catch(error => {
         console.error('Error:', error.message);
         process.exit(1);
