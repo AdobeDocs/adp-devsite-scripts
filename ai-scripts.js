@@ -157,6 +157,9 @@ async function createFAQ(endpoint, apiKey, filepath, content, faqCount) {
 }
 
 async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, faqCount, h1) {
+  // Check if FAQs already exist in the metadata
+  const hasFaqs = /faqs\s*:/i.test(metadata);
+  
   const response = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -167,14 +170,14 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
       messages: [
         {
           role: "system",
-          content: "You are an AI assistant that updates YAML frontmatter. You must preserve ALL existing fields exactly as they are. Only enhance title/description/keywords if needed and add faqs. Never duplicate fields or add new field types."
+          content: "You are an AI assistant that updates YAML frontmatter. You must preserve ALL existing fields exactly as they are. Only enhance title/description/keywords if needed and handle faqs appropriately. Never duplicate fields or add new field types."
         },
         {
           role: "user",
           content: `Update the YAML frontmatter below. CRITICAL RULES:
             - Keep ALL existing fields exactly as they are (preserve everything from current metadata)
             - Only modify title, description, keywords if they need improvement - keywords should be 5 total so add more if needed
-            - Add faqs section with ${faqCount} items
+            - ${hasFaqs ? `Update existing faqs minimally and ensure there are at least ${faqCount} questions and answers` : `Add new faqs section with ${faqCount} items`}
             - Each field name can appear ONLY ONCE in your response
             - Never add new field types that weren't in the original
 
@@ -190,7 +193,7 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
             - [SEO keyword 3]
             - [SEO keyword 4]
             - [SEO keyword 5]
-            # FAQs: ${faqCount} questions and answers:
+            # FAQs: ${hasFaqs ? `Update existing faqs minimally, ensure at least ${faqCount} questions` : `${faqCount} new questions and answers`}:
             faqs 
             - question: [Question 1]
               answer: [1-3 sentence answer]
@@ -204,7 +207,7 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
             Return a single YAML frontmatter block with:
             1. All original fields preserved exactly
             2. ${h1 ? 'Title must be exactly: ' + h1 : 'Enhanced/created title'}/description/keywords (5 total keywords for SEO)
-            3. New faqs section
+            3. ${hasFaqs ? `Enhanced existing faqs section with at least ${faqCount} items` : `New faqs section with ${faqCount} items`}
             4. No duplicate fields
 
             Content to analyze:
