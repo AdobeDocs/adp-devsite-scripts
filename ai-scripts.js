@@ -85,7 +85,7 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
         },
         {
           role: "user", // user prompt: the specific task or request from the user to the AI assistant
-          content: `Generate YAML frontmatter for the following content in this exact format (YAML between --- markers). Include a 'faqs' array with ${faqCount} items.
+          content: `Generate YAML frontmatter for the following content in this exact format (YAML between --- markers). Generate keywords to help the page with SEO. Include a 'faqs' array with ${faqCount} items.
                 ---
                 title: [Same as the heading1 content]
                 description: [Brief description of the document]
@@ -101,6 +101,8 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
                   answer: [Actionable, 1-3 sentence answer]
                 - question: [Concise question 2]
                   answer: [Actionable, 1-3 sentence answer]
+                
+                Preserve other original metadata (contributors or openAPISpec)
                 ---
                 Content: ${sanitizeContent(content)}`
         }
@@ -162,11 +164,11 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
       messages: [
         {
           role: "system",
-          content: "You are an AI assistant that minimally updates YAML frontmatter: preserve existing fields, adjust only what is necessary, and add a concise 'faqs' array."
+          content: "You are an AI assistant that minimally updates YAML frontmatter: preserve other existing fields like contributors or openAPISpec, and adjust title, description, or keywords only if necessary, and add a concise 'faqs' array."
         },
         {
           role: "user",
-          content: `Review and minimally update the following YAML frontmatter based on the page content. Keep all existing custom fields. Ensure the format matches exactly and append/update a 'faqs' array with ${faqCount} items.
+          content: `Review and minimally update the following YAML frontmatter based on the page content. Generate keywords to help the page with SEO. Keep all existing custom fields like contributors or openAPISpec as is. Ensure the format matches exactly and append/update a 'faqs' array with ${faqCount} items. Don't return any duplicate frontmatter categories.
     
             Expected format:
               ---
@@ -184,7 +186,8 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
                 answer: [Actionable, 1-3 sentence answer]
               - question: [Concise question 2]
                 answer: [Actionable, 1-3 sentence answer]
-              other original metadata (preserve)
+              
+              Preserve other original metadata (contributors or openAPISpec)
               ---
 
               Current metadata:
