@@ -7,7 +7,7 @@ const SKIP_EXTENSIONS = [
     '.pdf', '.zip', '.tar', '.gz', '.json'
 ];
 
-module.exports = async ({ core, githubToken, owner, repo }) => {
+module.exports = async ({ core, githubToken, owner, repo, folderPath }) => {
     // Validate required parameters
     if (!repo) {
         throw new Error('Missing required parameter: repo must be specified');
@@ -17,14 +17,15 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
     const ownerName = owner || "AdobeDocs";
     const repoName = repo;
     const token = githubToken || process.env.GITHUB_TOKEN;
+    const targetFolderPath = folderPath || "src/pages";
 
     if (!token) {
         throw new Error('Missing required parameter: githubToken must be provided or GITHUB_TOKEN environment variable must be set');
     }
 
     try {
-        // Recursively get all files in src/pages/ directory
-        const contentsResponse = await fetch(`https://api.github.com/repos/${ownerName}/${repoName}/contents/src/pages`, {
+        // Recursively get all files in the specified directory
+        const contentsResponse = await fetch(`https://api.github.com/repos/${ownerName}/${repoName}/contents/${targetFolderPath}`, {
             headers: {
                 'Accept': 'application/vnd.github.v3+json',
                 'Authorization': `Bearer ${token}`
@@ -90,12 +91,12 @@ module.exports = async ({ core, githubToken, owner, repo }) => {
             }
         }
 
-        // Start processing from src/pages
-        await processPath('src/pages');
+        // Start processing from the specified folder
+        await processPath(targetFolderPath);
 
         if (allContent === '') {
-            console.log('No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)');
-            allContent = 'No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)';
+            console.log(`No matching files found in ${targetFolderPath} directory (excluding config.md, binary files, and JSX components)`);
+            allContent = `No matching files found in ${targetFolderPath} directory (excluding config.md, binary files, and JSX components)`;
         }
 
         // Write content to all_pages_content.txt
@@ -117,6 +118,7 @@ if (require.main === module) {
     const owner = process.env.GITHUB_OWNER;
     const repo = process.env.GITHUB_REPO;
     const githubToken = process.env.GITHUB_TOKEN;
+    const folderPath = process.env.FOLDER_PATH;
     
     if (!repo) {
         console.error('Error: GITHUB_REPO environment variable must be set when running directly');
@@ -126,7 +128,8 @@ if (require.main === module) {
     module.exports({ 
         githubToken,
         owner,
-        repo
+        repo,
+        folderPath
     }).catch(error => {
         console.error('Error:', error.message);
         process.exit(1);

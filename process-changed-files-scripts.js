@@ -8,15 +8,15 @@ const SKIP_EXTENSIONS = [
     '.pdf', '.zip', '.tar', '.gz', '.json'
 ];
 
-async function fetchChangedFilesContent(changedFiles, owner, repo, githubToken) {
+async function fetchChangedFilesContent(changedFiles, owner, repo, githubToken, targetFolderPath) {
     let allContent = '';
     let processedFilesCount = 0;
 
     for (const filePath of changedFiles) {
         try {
-            // Skip if not in src/pages directory
-            if (!filePath.startsWith('src/pages/')) {
-                console.log(`Skipping file outside src/pages: ${filePath}`);
+            // Skip if not in the specified directory
+            if (!filePath.startsWith(`${targetFolderPath}/`)) {
+                console.log(`Skipping file outside ${targetFolderPath}: ${filePath}`);
                 continue;
             }
 
@@ -76,7 +76,7 @@ async function fetchChangedFilesContent(changedFiles, owner, repo, githubToken) 
     return { allContent, processedFilesCount };
 }
 
-module.exports = async ({ core, githubToken, owner, repo, changedFiles, fileName }) => {
+module.exports = async ({ core, githubToken, owner, repo, changedFiles, fileName, folderPath }) => {
     // Validate required parameters
     if (!repo) {
         throw new Error('Missing required parameter: repo must be specified');
@@ -90,6 +90,7 @@ module.exports = async ({ core, githubToken, owner, repo, changedFiles, fileName
     const repoName = repo;
     const inputFileName = fileName || "changed_files_content.txt";
     const token = githubToken || process.env.GITHUB_TOKEN;
+    const targetFolderPath = folderPath || "src/pages";
 
     if (!token) {
         throw new Error('Missing required parameter: githubToken must be provided or GITHUB_TOKEN environment variable must be set');
@@ -104,7 +105,8 @@ module.exports = async ({ core, githubToken, owner, repo, changedFiles, fileName
             changedFiles, 
             ownerName, 
             repoName, 
-            token
+            token,
+            targetFolderPath
         );
 
         if (processedFilesCount === 0) {
@@ -130,6 +132,7 @@ if (require.main === module) {
     const repo = process.env.GITHUB_REPO;
     const githubToken = process.env.GITHUB_TOKEN;
     const fileName = process.env.FILE_NAME;
+    const folderPath = process.env.FOLDER_PATH;
     
     // Parse changed files from environment variable (JSON array)
     let changedFiles = [];
@@ -158,7 +161,8 @@ if (require.main === module) {
         owner,
         repo,
         changedFiles,
-        fileName
+        fileName,
+        folderPath
     }).catch(error => {
         console.error('Error:', error.message);
         process.exit(1);
