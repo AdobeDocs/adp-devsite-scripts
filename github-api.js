@@ -82,33 +82,41 @@ async function getLatestCommit(owner, repo, ref, githubToken) {
 // DOCS: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#create-a-reference
 async function createBranch(owner, repo, branchRef, baseRefSha, githubToken) {
     const token = githubToken || process.env.GITHUB_TOKEN;
+    
+    // Try to get the existing branch first
     try {
-        // Try to get the existing branch
-        try {
-            const existingBranch = await getLatestCommit(owner, repo, branchRef, token);
-            return existingBranch;
-        } catch (error) {
-            // If branch doesn't exist, create it
-            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
-                method: 'POST',
-                headers: {
-                    'accept': 'application/vnd.github+json',
-                    'authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    ref: `refs/${branchRef}`,
-                    sha: baseRefSha
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to create branch: ${response.status}`);
-            }
-
-            return response.json();
-        }
+        const existingBranch = await getLatestCommit(owner, repo, branchRef, token);
+        console.log(`Branch ${branchRef} already exists, using existing branch`);
+        return existingBranch;
     } catch (error) {
-        console.error('Error in createBranch:', error);
+        // Branch doesn't exist, create it
+        console.log(`Branch ${branchRef} doesn't exist, creating new branch`);
+    }
+
+    // Create the new branch
+    try {
+        const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
+            method: 'POST',
+            headers: {
+                'accept': 'application/vnd.github+json',
+                'authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                ref: `refs/${branchRef}`,
+                sha: baseRefSha
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to create branch: ${response.status} - ${errorText}`);
+        }
+
+        const result = await response.json();
+        console.log(`Successfully created branch ${branchRef}`);
+        return result;
+    } catch (error) {
+        console.error('Error creating branch:', error);
         throw error;
     }
 }

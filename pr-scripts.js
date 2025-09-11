@@ -48,6 +48,7 @@ module.exports = async ({ core, prId, githubToken, owner, repo }) => {
         });
 
         let allContent = '';
+        let processedFilesCount = 0;
 
         for (const file of pagesFiles) {
             const contentResponse = await fetch(file.raw_url, {
@@ -68,12 +69,13 @@ module.exports = async ({ core, prId, githubToken, owner, repo }) => {
                 }
                 // append the content to allContent string with identifier "--- File: ${file.filename} ---" for further processing
                 allContent += `\n\n--- File: ${file.filename} ---\n\n${content}`;
+                processedFilesCount++;
             } else {
                 console.error(`Failed to fetch content for ${file.filename}`);
             }
         }
 
-        if (pagesFiles.length === 0) {
+        if (processedFilesCount === 0) {
             console.log('No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)');
             allContent = 'No matching files found in src/pages directory (excluding config.md, binary files, and JSX components)';
         }

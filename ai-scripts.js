@@ -70,7 +70,7 @@ function ensureTitleInFrontmatterBlock(frontmatterBlock, h1){
   return afterOpening;
 }
 
-async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
+async function createMetadata(endpoint, apiKey, filepath, content, faqCount, h1) {
   const response = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -85,24 +85,29 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount) {
         },
         {
           role: "user", // user prompt: the specific task or request from the user to the AI assistant
-          content: `Generate YAML frontmatter for the following content in this exact format (YAML between --- markers). Include a 'faqs' array with ${faqCount} items.
-                ---
-                title: [Same as the heading1 content]
-                description: [Brief description of the document]
-                keywords:
-                - [Keyword 1]
-                - [Keyword 2]
-                - [Keyword 3]
-                - [Keyword 4]
-                - [Keyword 5]
-                # --- FAQs ---
-                faqs:
-                - question: [Concise question 1]
-                  answer: [Actionable, 1-3 sentence answer]
-                - question: [Concise question 2]
-                  answer: [Actionable, 1-3 sentence answer]
-                ---
-                Content: ${sanitizeContent(content)}`
+          content: `Generate YAML frontmatter for the following content. Add faqs section with ${faqCount} items. Return ONLY the YAML frontmatter block below - nothing else.
+
+          ${h1 ? `TITLE INSTRUCTION: Use this exact H1 heading as the title: "${h1}"` : 'TITLE INSTRUCTION: Create a descriptive title since no H1 heading exists in the content'}
+
+          Required format (include ONLY these fields):
+          ---
+          title: ${h1 ? h1 : '[Create descriptive title for the content]'}
+          description: [Brief 1-2 sentence description]
+          keywords:
+          - [SEO keyword 1]
+          - [SEO keyword 2] 
+          - [SEO keyword 3]
+          - [SEO keyword 4]
+          - [SEO keyword 5]
+         # FAQs: ${faqCount} questions and answers:
+          faqs 
+          - question: [Question 1]
+            answer: [1-3 sentence answer]
+          - question: [Question 2]
+            answer: [1-3 sentence answer]
+          ---
+
+          Content: ${sanitizeContent(content)}`
         }
       ],
       max_tokens: 800,
@@ -151,7 +156,10 @@ async function createFAQ(endpoint, apiKey, filepath, content, faqCount) {
   return aiContent;
 }
 
-async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, faqCount) {
+async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, faqCount, h1) {
+  // Check if FAQs already exist in the metadata
+  const hasFaqs = /faqs\s*:/i.test(metadata);
+  
   const response = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -162,36 +170,48 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
       messages: [
         {
           role: "system",
-          content: "You are an AI assistant that minimally updates YAML frontmatter: preserve existing fields, adjust only what is necessary, and add a concise 'faqs' array."
+          content: "You are an AI assistant that updates YAML frontmatter. You must preserve ALL existing fields exactly as they are. Only enhance title/description/keywords if needed and handle faqs appropriately. Never duplicate fields or add new field types."
         },
         {
           role: "user",
-          content: `Review and minimally update the following YAML frontmatter based on the page content. Keep all existing custom fields. Ensure the format matches exactly and append/update a 'faqs' array with ${faqCount} items.
-    
-            Expected format:
-              ---
-              title: [Same as the heading1 content]
-              description: [Brief description of the document]
-              keywords:
-              - [Keyword 1]
-              - [Keyword 2]
-              - [Keyword 3]
-              - [Keyword 4]
-              - [Keyword 5]
-              # --- FAQs ---
-              faqs:
-              - question: [Concise question 1]
-                answer: [Actionable, 1-3 sentence answer]
-              - question: [Concise question 2]
-                answer: [Actionable, 1-3 sentence answer]
-              other original metadata (preserve)
-              ---
+          content: `Update the YAML frontmatter below. CRITICAL RULES:
+            - Keep ALL existing fields exactly as they are (preserve everything from current metadata)
+            - Only modify title, description, keywords if they need improvement - keywords should be 5 total so add more if needed
+            - ${hasFaqs ? `Update existing faqs minimally and ensure there are at least ${faqCount} questions and answers` : `Add new faqs section with ${faqCount} items`}
+            - Each field name can appear ONLY ONCE in your response
+            - Never add new field types that weren't in the original
 
-              Current metadata:
-              ${metadata}
+            ${h1 ? `TITLE INSTRUCTION: Use this exact H1 heading as the title: "${h1}" - do not modify or improve it` : 'TITLE INSTRUCTION: Create or improve the title since no H1 heading exists in the content'}
 
-              Content to analyze:
-              ${sanitizeContent(fileContent)}`
+            Required format (include ONLY these fields):
+            ---
+            title: ${h1 ? h1 : '[Create or improve existing title]'}
+            description: [Brief 1-2 sentence description]
+            keywords:
+            - [SEO keyword 1]
+            - [SEO keyword 2] 
+            - [SEO keyword 3]
+            - [SEO keyword 4]
+            - [SEO keyword 5]
+            # FAQs: ${hasFaqs ? `Update existing faqs minimally, ensure at least ${faqCount} questions` : `${faqCount} new questions and answers`}:
+            faqs 
+            - question: [Question 1]
+              answer: [1-3 sentence answer]
+            - question: [Question 2]
+              answer: [1-3 sentence answer]
+            ---
+
+            Current metadata:
+            ${metadata}
+
+            Return a single YAML frontmatter block with:
+            1. All original fields preserved exactly
+            2. ${h1 ? 'Title must be exactly: ' + h1 : 'Enhanced/created title'}/description/keywords (5 total keywords for SEO)
+            3. ${hasFaqs ? `Enhanced existing faqs section with at least ${faqCount} items` : `New faqs section with ${faqCount} items`}
+            4. No duplicate fields
+
+            Content to analyze:
+            ${sanitizeContent(fileContent)}`
         }
       ],
       max_tokens: 800,
@@ -278,14 +298,15 @@ module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName
       const faqCount = getFAQCount(complexity);
 
       if (hasMetadata(cleanContent)) {
+        console.log("editing metadata")
         const parts = cleanContent.split('---');
         const metadata = parts.slice(1, 2).join('---').trim();
         const fullContent = parts.slice(2).join('---').trim();
-        const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount);
+        const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount, h1);
         const ensured = ensureTitleInFrontmatterBlock(edited, h1);
         allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       } else {
-        const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount);
+        const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount, h1);
         const ensured = ensureTitleInFrontmatterBlock(fm, h1);
         allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       }
