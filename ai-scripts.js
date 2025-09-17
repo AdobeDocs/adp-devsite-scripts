@@ -70,7 +70,62 @@ function ensureTitleInFrontmatterBlock(frontmatterBlock, h1){
   return afterOpening;
 }
 
-async function createMetadata(endpoint, apiKey, filepath, content, faqCount, h1) {
+// async function createMetadata(endpoint, apiKey, filepath, content, faqCount, h1) {
+//   const response = await fetchWithRetry(endpoint, {
+//     method: 'POST',
+//     headers: {
+//       'Content-Type': 'application/json',
+//       'Authorization': `Bearer ${apiKey}`
+//     },
+//     body: JSON.stringify({
+//       messages: [
+//         {
+//           role: "system", // system prompt: sets the behavior and style of the AI assistant
+//           content: "You are an AI assistant that generates YAML frontmatter for documentation pages, including a title, description, keywords, and a concise FAQs section."
+//         },
+//         {
+//           role: "user", // user prompt: the specific task or request from the user to the AI assistant
+//           content: `Generate YAML frontmatter for the following content. Add faqs section with ${faqCount} items. Return ONLY the YAML frontmatter block below - nothing else.
+
+//           ${h1 ? `TITLE INSTRUCTION: Use this exact H1 heading as the title: "${h1}"` : 'TITLE INSTRUCTION: Create a descriptive title since no H1 heading exists in the content'}
+
+//           Required format (include ONLY these fields):
+//           ---
+//           title: ${h1 ? h1 : '[Create descriptive title for the content]'}
+//           description: [Brief 1-2 sentence description]
+//           keywords:
+//           - [SEO keyword 1]
+//           - [SEO keyword 2] 
+//           - [SEO keyword 3]
+//           - [SEO keyword 4]
+//           - [SEO keyword 5]
+//          # FAQs: ${faqCount} questions and answers:
+//           faqs 
+//           - question: [Question 1]
+//             answer: [1-3 sentence answer]
+//           - question: [Question 2]
+//             answer: [1-3 sentence answer]
+//           ---
+
+//           Content: ${sanitizeContent(content)}`
+//         }
+//       ],
+//       max_tokens: 800,
+//       temperature: 1,
+//       top_p: 1,
+//     })
+//   });
+
+//   const result = await response.json();
+//   const aiContent = result.choices[0].message.content;
+
+//   // Clean any AI-generated file headers to prevent double headers
+//   const cleanContent = aiContent.replace(/^--- File: .* ---\n/gm, '');
+  
+//   return cleanContent;
+// }
+
+async function createMetadata(endpoint, apiKey, content, h1) {
   const response = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -81,11 +136,11 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount, h1)
       messages: [
         {
           role: "system", // system prompt: sets the behavior and style of the AI assistant
-          content: "You are an AI assistant that generates YAML frontmatter for documentation pages, including a title, description, keywords, and a concise FAQs section."
+          content: "You are an AI assistant that generates YAML frontmatter for documentation pages, including a title, description, and keywords."
         },
         {
           role: "user", // user prompt: the specific task or request from the user to the AI assistant
-          content: `Generate YAML frontmatter for the following content. Add faqs section with ${faqCount} items. Return ONLY the YAML frontmatter block below - nothing else.
+          content: `Generate YAML frontmatter for the following content. Return ONLY the YAML frontmatter block below - nothing else.
 
           ${h1 ? `TITLE INSTRUCTION: Use this exact H1 heading as the title: "${h1}"` : 'TITLE INSTRUCTION: Create a descriptive title since no H1 heading exists in the content'}
 
@@ -99,12 +154,6 @@ async function createMetadata(endpoint, apiKey, filepath, content, faqCount, h1)
           - [SEO keyword 3]
           - [SEO keyword 4]
           - [SEO keyword 5]
-         # FAQs: ${faqCount} questions and answers:
-          faqs 
-          - question: [Question 1]
-            answer: [1-3 sentence answer]
-          - question: [Question 2]
-            answer: [1-3 sentence answer]
           ---
 
           Content: ${sanitizeContent(content)}`
@@ -156,10 +205,78 @@ async function createFAQ(endpoint, apiKey, filepath, content, faqCount) {
   return aiContent;
 }
 
-async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, faqCount, h1) {
-  // Check if FAQs already exist in the metadata
-  const hasFaqs = /faqs\s*:/i.test(metadata);
+// async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, faqCount, h1) {
+//   // Check if FAQs already exist in the metadata
+//   const hasFaqs = /faqs\s*:/i.test(metadata);
   
+//   const response = await fetchWithRetry(endpoint, {
+//     method: 'POST',
+//     headers: {
+//       'Content-Type': 'application/json',
+//       'Authorization': `Bearer ${apiKey}`
+//     },
+//     body: JSON.stringify({
+//       messages: [
+//         {
+//           role: "system",
+//           content: "You are an AI assistant that updates YAML frontmatter. You must preserve ALL existing fields exactly as they are. Only enhance title/description/keywords if needed and handle faqs appropriately. Never duplicate fields or add new field types."
+//         },
+//         {
+//           role: "user",
+//           content: `Update the YAML frontmatter below. CRITICAL RULES:
+//             - Keep ALL existing fields exactly as they are (preserve everything from current metadata)
+//             - Only modify title, description, keywords if they need improvement - keywords should be 5 total so add more if needed
+//             - ${hasFaqs ? `Update existing faqs minimally and ensure there are at least ${faqCount} questions and answers` : `Add new faqs section with ${faqCount} items`}
+//             - Each field name can appear ONLY ONCE in your response
+//             - Never add new field types that weren't in the original
+
+//             ${h1 ? `TITLE INSTRUCTION: Use this exact H1 heading as the title: "${h1}" - do not modify or improve it` : 'TITLE INSTRUCTION: Create or improve the title since no H1 heading exists in the content'}
+
+//             Required format (include ONLY these fields):
+//             ---
+//             title: ${h1 ? h1 : '[Create or improve existing title]'}
+//             description: [Brief 1-2 sentence description]
+//             keywords:
+//             - [SEO keyword 1]
+//             - [SEO keyword 2] 
+//             - [SEO keyword 3]
+//             - [SEO keyword 4]
+//             - [SEO keyword 5]
+//             # FAQs: ${hasFaqs ? `Update existing faqs minimally, ensure at least ${faqCount} questions` : `${faqCount} new questions and answers`}:
+//             faqs 
+//             - question: [Question 1]
+//               answer: [1-3 sentence answer]
+//             - question: [Question 2]
+//               answer: [1-3 sentence answer]
+//             ---
+
+//             Current metadata:
+//             ${metadata}
+
+//             Return a single YAML frontmatter block with:
+//             1. All original fields preserved exactly
+//             2. ${h1 ? 'Title must be exactly: ' + h1 : 'Enhanced/created title'}/description/keywords (5 total keywords for SEO)
+//             3. ${hasFaqs ? `Enhanced existing faqs section with at least ${faqCount} items` : `New faqs section with ${faqCount} items`}
+//             4. No duplicate fields
+
+//             Content to analyze:
+//             ${sanitizeContent(fileContent)}`
+//         }
+//       ],
+//       max_tokens: 800,
+//       temperature: 1,
+//       top_p: 1,
+//     })
+//   });
+
+//   const result = await response.json();
+//   const aiContent = result.choices[0].message.content;
+//   // Clean any AI-generated file headers to prevent double headers
+//   const cleanContent = aiContent.replace(/^--- File: .* ---\n/gm, '');
+//   return cleanContent;
+// }
+
+async function EditMetadata(endpoint, apiKey, metadata, fileContent, h1) {
   const response = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -170,14 +287,13 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
       messages: [
         {
           role: "system",
-          content: "You are an AI assistant that updates YAML frontmatter. You must preserve ALL existing fields exactly as they are. Only enhance title/description/keywords if needed and handle faqs appropriately. Never duplicate fields or add new field types."
+          content: "You are an AI assistant that updates YAML frontmatter. You must preserve ALL existing fields exactly as they are. Only enhance title/description/keywords if needed. Never duplicate fields or add new field types."
         },
         {
           role: "user",
           content: `Update the YAML frontmatter below. CRITICAL RULES:
             - Keep ALL existing fields exactly as they are (preserve everything from current metadata)
             - Only modify title, description, keywords if they need improvement - keywords should be 5 total so add more if needed
-            - ${hasFaqs ? `Update existing faqs minimally and ensure there are at least ${faqCount} questions and answers` : `Add new faqs section with ${faqCount} items`}
             - Each field name can appear ONLY ONCE in your response
             - Never add new field types that weren't in the original
 
@@ -193,12 +309,6 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
             - [SEO keyword 3]
             - [SEO keyword 4]
             - [SEO keyword 5]
-            # FAQs: ${hasFaqs ? `Update existing faqs minimally, ensure at least ${faqCount} questions` : `${faqCount} new questions and answers`}:
-            faqs 
-            - question: [Question 1]
-              answer: [1-3 sentence answer]
-            - question: [Question 2]
-              answer: [1-3 sentence answer]
             ---
 
             Current metadata:
@@ -207,7 +317,6 @@ async function EditMetadata(endpoint, apiKey, filepath, metadata, fileContent, f
             Return a single YAML frontmatter block with:
             1. All original fields preserved exactly
             2. ${h1 ? 'Title must be exactly: ' + h1 : 'Enhanced/created title'}/description/keywords (5 total keywords for SEO)
-            3. ${hasFaqs ? `Enhanced existing faqs section with at least ${faqCount} items` : `New faqs section with ${faqCount} items`}
             4. No duplicate fields
 
             Content to analyze:
@@ -294,19 +403,20 @@ module.exports = async ({ core, azureOpenAIEndpoint, azureOpenAIAPIKey, fileName
       processedFileCount++;
 
       const h1 = extractH1(cleanContent);
-      const complexity = determineComplexity(cleanContent);
-      const faqCount = getFAQCount(complexity);
+      // const complexity = determineComplexity(cleanContent);
+      // const faqCount = getFAQCount(complexity);
 
       if (hasMetadata(cleanContent)) {
-        console.log("editing metadata")
         const parts = cleanContent.split('---');
         const metadata = parts.slice(1, 2).join('---').trim();
         const fullContent = parts.slice(2).join('---').trim();
-        const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount, h1);
+        // const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, metadata, fullContent, faqCount, h1);
+        const edited = await EditMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, metadata, fullContent, h1);
         const ensured = ensureTitleInFrontmatterBlock(edited, h1);
         allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       } else {
-        const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount, h1);
+        // const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, filePath, cleanContent, faqCount, h1);
+        const fm = await createMetadata(azureOpenAIEndpoint, azureOpenAIAPIKey, cleanContent, h1);
         const ensured = ensureTitleInFrontmatterBlock(fm, h1);
         allGeneratedContent += `--- File: ${filePath} ---\n${ensured}`;
       }
