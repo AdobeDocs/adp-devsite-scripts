@@ -1,5 +1,8 @@
 const { exec } = require('child_process');
 
+// Utility function to add a 1 second delay
+const delay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
+
 module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, pathPrefix }) => {
   let httpMethod, edsSiteEnv, codeRepoBranch, args;
   if (operation.includes('cache') || operation.includes('preview') || operation.includes('live')) {
@@ -43,7 +46,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
     const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
 
-    const promise = new Promise((resolve) => {
+    const promise = new Promise(async (resolve) => {
+      // Add 1 second delay before executing the operation
+      await delay(1000);
+      
       exec(cmd, (error, execOut, execErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
@@ -78,7 +84,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
     const deleteCmd = `curl -XDELETE -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
 
-    const promise = new Promise((resolve) => {
+    const promise = new Promise(async (resolve) => {
+      // Add 1 second delay before executing the operation
+      await delay(1000);
+      
       exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = deleteExecOut.match(/HTTP_STATUS:(\d+)/);
