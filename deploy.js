@@ -54,13 +54,14 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
-
+        const currentTime = new Date().toISOString();
         if (error) {
           summaryData.push([`${theFilePath}`, `❌ Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
         } else {
           summaryData.push([`${theFilePath}`, `✅ Success`, `HTTP ${httpStatus} - ${operation} completed`]);
-          console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} \n${execOut} \n::endgroup::`);
+          let timeTaken = new Date().getTime() - currentTime.getTime();
+          console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} took ${timeTaken}ms\n${execOut} \n::endgroup::`);
         }
         resolve();
       });
