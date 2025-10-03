@@ -35,6 +35,15 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
   let summaryData = [];
 
+  // Sort changes array to process valid files (.md, .json) first, invalid files last
+  const sortedChanges = changes.sort((a, b) => {
+    const aValid = a.endsWith('.md') || a.endsWith('.json');
+    const bValid = b.endsWith('.md') || b.endsWith('.json');
+    if (aValid && !bValid) return -1; // a comes first
+    if (!aValid && bValid) return 1;  // b comes first
+    return 0; // maintain original order for files of same type
+  });
+
   // Process changes in batches of 5
   const processChangeFile = async (file) => {
     return new Promise((resolve) => {
@@ -67,7 +76,16 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     });
   };
 
-  await processBatch(changes, 5, processChangeFile);
+  await processBatch(sortedChanges, 5, processChangeFile);
+
+  // Sort deletions array to process valid files (.md, .json) first, invalid files last
+  const sortedDeletions = deletions.sort((a, b) => {
+    const aValid = a.endsWith('.md') || a.endsWith('.json');
+    const bValid = b.endsWith('.md') || b.endsWith('.json');
+    if (aValid && !bValid) return -1; // a comes first
+    if (!aValid && bValid) return 1;  // b comes first
+    return 0; // maintain original order for files of same type
+  });
 
   // Process deletions in batches of 5
   const processDeleteFile = async (file) => {
@@ -102,7 +120,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     });
   };
 
-  await processBatch(deletions, 5, processDeleteFile);
+  await processBatch(sortedDeletions, 5, processDeleteFile);
 
   // Sort summaryData: Error first, then Success, then Skipped
   summaryData.sort((a, b) => {
