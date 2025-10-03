@@ -57,7 +57,6 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
-        console.log()
         if (error) {
           if (operation.includes('preview') || operation.includes('live')) {
             hasErrors = true;
