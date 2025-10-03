@@ -53,7 +53,6 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
       const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
       const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
 
-      const currentTime = new Date().toISOString();
       exec(cmd, (error, execOut, execErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
@@ -67,7 +66,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
           console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
         } else {
           summaryData.push([`${theFilePath}`, `✅ Success`, `HTTP ${httpStatus} - ${operation} completed`]);
-          console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} at ${currentTime}\n${execOut} \n::endgroup::`);
+          console.log(`::group:: Running ${operation} on ${theFilePath} \nThe command: ${cmd} \n${execOut} \n::endgroup::`);
         }
         resolve();
       });
