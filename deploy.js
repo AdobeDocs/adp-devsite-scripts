@@ -1,7 +1,12 @@
 const { exec } = require('child_process');
 
-// Utility function to add a 1 second delay
-const delay = (ms = 3500) => new Promise(resolve => setTimeout(resolve, ms));
+// Utility function to process arrays in batches
+const processBatch = async (array, batchSize, processFn) => {
+  for (let i = 0; i < array.length; i += batchSize) {
+    const batch = array.slice(i, i + batchSize);
+    await Promise.all(batch.map(processFn));
+  }
+};
 
 module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, pathPrefix }) => {
   let httpMethod, edsSiteEnv, codeRepoBranch, args;
@@ -29,27 +34,23 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   }
 
   let summaryData = [];
-  let pendingOperations = [];
 
-  // Process changes
-  for (let file of changes) {
-    // Add 3.5 second delay when processing each file
-    await delay(3500);
+  // Process changes in batches of 5
+  const processChangeFile = async (file) => {
+    return new Promise((resolve) => {
+      if (!file.endsWith('.md') && !file.endsWith('.json')) {
+        summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
+        console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
+        resolve();
+        return;
+      }
 
-    if (!file.endsWith('.md') && !file.endsWith('.json')) {
-      summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
-      console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
-      continue;
-    }
+      // have to pop src/pages from the file path
+      const processedFile = file.replace('src/pages/', '');
+      const theFilePath = `${pathPrefix}/${processedFile}`;
+      const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
+      const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
 
-    // have to pop src/pages from the file path
-    file = file.replace('src/pages/', '');
-
-    const theFilePath = `${pathPrefix}/${file}`;
-    const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
-    const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
-
-    const promise = new Promise((resolve) => {
       const currentTime = new Date().toISOString();
       exec(cmd, (error, execOut, execErr) => {
         // Extract HTTP status code from curl output
@@ -66,29 +67,26 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         resolve();
       });
     });
+  };
 
-    pendingOperations.push(promise);
-  }
+  await processBatch(changes, 5, processChangeFile);
 
-  // Process deletions
-  for (let file of deletions) {
-    // Add 3.5 second delay when processing each file
-    await delay(3500);
+  // Process deletions in batches of 5
+  const processDeleteFile = async (file) => {
+    return new Promise((resolve) => {
+      if (!file.endsWith('.md') && !file.endsWith('.json')) {
+        summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
+        console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
+        resolve();
+        return;
+      }
 
-    if (!file.endsWith('.md') && !file.endsWith('.json')) {
-      summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
-      console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
-      continue;
-    }
+      // have to pop src/pages from the file path
+      const processedFile = file.replace('src/pages/', '');
+      const theFilePath = `${pathPrefix}/${processedFile}`;
+      const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
+      const deleteCmd = `curl -XDELETE -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
 
-    // have to pop src/pages from the file path
-    file = file.replace('src/pages/', '');
-
-    const theFilePath = `${pathPrefix}/${file}`;
-    const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
-    const deleteCmd = `curl -XDELETE -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
-
-    const promise = new Promise((resolve) => {
       exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = deleteExecOut.match(/HTTP_STATUS:(\d+)/);
@@ -104,12 +102,9 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         resolve();
       });
     });
+  };
 
-    pendingOperations.push(promise);
-  }
-
-  // Wait for all operations to complete before writing summary
-  await Promise.all(pendingOperations);
+  await processBatch(deletions, 5, processDeleteFile);
 
   // Sort summaryData: Error first, then Success, then Skipped
   summaryData.sort((a, b) => {
