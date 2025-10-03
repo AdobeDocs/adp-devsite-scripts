@@ -1,7 +1,7 @@
 const { exec } = require('child_process');
 
 // Utility function to add a 1 second delay
-const delay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms = 2000) => new Promise(resolve => setTimeout(resolve, ms));
 
 module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, pathPrefix }) => {
   let httpMethod, edsSiteEnv, codeRepoBranch, args;
@@ -48,7 +48,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
     const promise = new Promise(async (resolve) => {
       // Add 1 second delay before executing the operation
-      await delay(1000);
+      await delay(2000);
       
       exec(cmd, (error, execOut, execErr) => {
         // Extract HTTP status code from curl output
