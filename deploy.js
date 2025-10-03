@@ -32,7 +32,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   let pendingOperations = [];
 
   // Process changes
-  changes.forEach((file) => {
+  changes.forEach(async (file) => {
+    // Add 2 second delay when processing each file
+    await delay(2000);
+
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
       summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
@@ -46,10 +49,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
     const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
 
-    const promise = new Promise(async (resolve) => {
-      // Add 1 second delay before executing the operation
-      await delay(2000);
-      
+    const promise = new Promise((resolve) => {
       exec(cmd, (error, execOut, execErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
@@ -70,7 +70,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   });
 
   // Process deletions
-  deletions.forEach((file) => {
+  deletions.forEach(async (file) => {
+    // Add 2 second delay when processing each file
+    await delay(2000);
+
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
       summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
@@ -84,10 +87,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
     const deleteCmd = `curl -XDELETE -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
 
-    const promise = new Promise(async (resolve) => {
-      // Add 1 second delay before executing the operation
-      await delay(1000);
-      
+    const promise = new Promise((resolve) => {
       exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = deleteExecOut.match(/HTTP_STATUS:(\d+)/);
