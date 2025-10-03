@@ -1,7 +1,7 @@
 const { exec } = require('child_process');
 
 // Utility function to add a 1 second delay
-const delay = (ms = 2000) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms = 3500) => new Promise(resolve => setTimeout(resolve, ms));
 
 module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, pathPrefix }) => {
   let httpMethod, edsSiteEnv, codeRepoBranch, args;
@@ -34,7 +34,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   // Process changes
   changes.forEach(async (file) => {
     // Add 2 second delay when processing each file
-    await delay(2000);
+    await delay(3500);
 
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
       summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
@@ -72,7 +72,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   // Process deletions
   deletions.forEach(async (file) => {
     // Add 2 second delay when processing each file
-    await delay(2000);
+    await delay(3500);
 
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
       summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
