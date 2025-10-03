@@ -50,11 +50,11 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
 
     const promise = new Promise((resolve) => {
+      const currentTime = new Date().toISOString();
       exec(cmd, (error, execOut, execErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
-        const currentTime = new Date().toISOString();
         console.log()
         if (error) {
           summaryData.push([`${theFilePath}`, `❌ Error`, `HTTP ${httpStatus} - ${operation} failed`]);
