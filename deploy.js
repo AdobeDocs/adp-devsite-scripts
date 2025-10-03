@@ -55,7 +55,6 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
-        console.log()
         if (error) {
           summaryData.push([`${theFilePath}`, `❌ Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
