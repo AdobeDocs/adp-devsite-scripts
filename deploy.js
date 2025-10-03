@@ -32,7 +32,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   let pendingOperations = [];
 
   // Process changes
-  for (const file of changes) {
+  for (let file of changes) {
     // Add 3.5 second delay when processing each file
     await delay(3500);
 
@@ -71,7 +71,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   }
 
   // Process deletions
-  for (const file of deletions) {
+  for (let file of deletions) {
     // Add 3.5 second delay when processing each file
     await delay(3500);
 
