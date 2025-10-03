@@ -32,14 +32,14 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   let pendingOperations = [];
 
   // Process changes
-  changes.forEach(async (file) => {
-    // Add 2 second delay when processing each file
+  for (const file of changes) {
+    // Add 3.5 second delay when processing each file
     await delay(3500);
 
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
       summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
-      return;
+      continue;
     }
 
     // have to pop src/pages from the file path
@@ -68,17 +68,17 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     });
 
     pendingOperations.push(promise);
-  });
+  }
 
   // Process deletions
-  deletions.forEach(async (file) => {
-    // Add 2 second delay when processing each file
+  for (const file of deletions) {
+    // Add 3.5 second delay when processing each file
     await delay(3500);
 
     if (!file.endsWith('.md') && !file.endsWith('.json')) {
       summaryData.push([`${file}`, `⚠️ Skipped`, `Only .md or .json files are allowed`]);
       console.error(`::group:: Skipping ${file} \nOnly file types .md or .json file are allowed \n::endgroup::`);
-      return;
+      continue;
     }
 
     // have to pop src/pages from the file path
@@ -106,7 +106,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     });
 
     pendingOperations.push(promise);
-  });
+  }
 
   // Wait for all operations to complete before writing summary
   await Promise.all(pendingOperations);
