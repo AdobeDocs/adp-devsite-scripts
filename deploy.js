@@ -27,6 +27,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
   let summaryData = [];
   let pendingOperations = [];
+  let hasErrors = false;
 
   // Process changes
   changes.forEach((file) => {
@@ -50,6 +51,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
 
         if (error) {
+          hasErrors = true;
           summaryData.push([`${theFilePath}`, `❌ Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Error ${theFilePath} \nThe command: ${cmd} \n${execOut} \n${execErr} \n::endgroup::`);
         } else {
@@ -85,6 +87,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         const httpStatus = statusMatch ? statusMatch[1] : 'Unknown';
 
         if (deleteError) {
+          hasErrors = true;
           summaryData.push([`${theFilePath}`, `❌ Error`, `HTTP ${httpStatus} - ${operation} failed`]);
           console.error(`::group:: Deleting error ${theFilePath} \nThe command: ${deleteCmd} \n${deleteExecOut} \n${deleteExecErr} \n::endgroup::`);
         } else {
@@ -122,4 +125,9 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     .addHeading(`Operation: ${operation}`)
     .addTable(tableContent)
     .write();
+
+  // Fail the action if any errors occurred
+  if (hasErrors) {
+    core.setFailed('One or more files failed to upload/delete');
+  }
 }
