@@ -1,10 +1,14 @@
 const { exec } = require('child_process');
 
+// Utility function to add a 1 second delay
+const delay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Utility function to process arrays in batches
 const processBatch = async (array, batchSize, processFn) => {
   for (let i = 0; i < array.length; i += batchSize) {
     const batch = array.slice(i, i + batchSize);
     await Promise.all(batch.map(processFn));
+    await delay();
   }
 };
 
@@ -34,7 +38,6 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   }
 
   let summaryData = [];
-  let pendingOperations = [];
   let hasErrors = false;
 
   // Sort changes array to process valid files (.md, .json) first, invalid files last
