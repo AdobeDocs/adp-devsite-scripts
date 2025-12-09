@@ -1,14 +1,18 @@
 const { exec } = require('child_process');
 
 // Utility function to add a 3 second delay
-const delay = (ms = 3000) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms = 10000) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Utility function to process arrays in batches
 const processBatch = async (array, batchSize, processFn) => {
   for (let i = 0; i < array.length; i += batchSize) {
     const batch = array.slice(i, i + batchSize);
     await Promise.all(batch.map(processFn));
-    await delay();
+
+    // Add delay between batches (but not after the last batch)
+    if (i + batchSize < array.length) {
+      await delay();
+    }
   }
 };
 
