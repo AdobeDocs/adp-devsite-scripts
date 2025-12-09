@@ -1,7 +1,7 @@
 const { exec } = require('child_process');
 
-// Utility function to add a 1 second delay
-const delay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
+// Utility function to add a 300 millisecond delay
+const delay = (ms = 300) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Utility function to process arrays in batches
 const processBatch = async (array, batchSize, processFn) => {
