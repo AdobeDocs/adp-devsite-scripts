@@ -3,6 +3,15 @@ const { exec } = require('child_process');
 // Utility function to add a 3 second delay
 const delay = (ms = 10000) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Utility function to get current time in HH:MM:SS format
+const getTimeStamp = () => {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds}`;
+};
+
 // Utility function to process arrays in batches
 const processBatch = async (array, batchSize, processFn) => {
   for (let i = 0; i < array.length; i += batchSize) {
@@ -69,6 +78,8 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
       const url = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
       const cmd = `curl -X${httpMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${url}`;
 
+      console.log(`[${getTimeStamp()}] Processing file: ${theFilePath}`);
+
       exec(cmd, (error, execOut, execErr) => {
         // Extract HTTP status code from curl output
         const statusMatch = execOut.match(/HTTP_STATUS:(\d+)/);
@@ -114,6 +125,8 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
       const theFilePath = `${pathPrefix}/${processedFile}`;
       const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
       const deleteCmd = `curl -XDELETE -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
+
+      console.log(`[${getTimeStamp()}] Deleting file: ${theFilePath}`);
 
       exec(deleteCmd, (deleteError, deleteExecOut, deleteExecErr) => {
         // Extract HTTP status code from curl output
