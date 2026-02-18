@@ -1,0 +1,13 @@
+{
+  "name": "adp-devsite-linter-bot",
+  "version": "1.0.0",
+  "description": "Linter bot that posts linter reports to GitHub PRs",
+  "main": "postLinterReport.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
