@@ -1,9 +1,11 @@
 const { exec } = require('child_process');
 
+const RETRYABLE_STATUS_CODES = ['400', '429'];
+
 // Utility function to add a 300 millisecond delay
 const delay = (ms = 300) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Utility function to execute command with retry logic for 400 and 429 errors
+// Utility function to execute command with retry logic for transient errors
 const execWithRetry = async (cmd, maxRetries = 5) => {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const result = await new Promise((resolve) => {
@@ -14,18 +16,17 @@ const execWithRetry = async (cmd, maxRetries = 5) => {
       });
     });
 
-    // If not a 400 or 429 error, return the result immediately
-    if (result.httpStatus !== '400' && result.httpStatus !== '429') {
+    if (!RETRYABLE_STATUS_CODES.includes(result.httpStatus)) {
       return result;
     }
 
-    // If it's a 400 or 429 and we have retries left, wait with exponential backoff
+    // Retryable status and we have retries left, wait with exponential backoff
     if (attempt < maxRetries - 1) {
       const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s, 16s
       console.log(`HTTP ${result.httpStatus} error. Retrying in ${waitTime / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
       await delay(waitTime);
     } else {
-      // Last attempt failed with 400 or 429
+      // Last attempt failed with retryable status
       return result;
     }
   }
