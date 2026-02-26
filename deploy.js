@@ -1,6 +1,6 @@
 const { exec } = require('child_process');
 
-const RETRYABLE_STATUS_CODES = ['400', '429'];
+const RETRYABLE_STATUS_CODES = ['400', '429', '500', '502', '503', '504'];
 
 // Utility function to add a 300 millisecond delay
 const delay = (ms = 300) => new Promise(resolve => setTimeout(resolve, ms));
