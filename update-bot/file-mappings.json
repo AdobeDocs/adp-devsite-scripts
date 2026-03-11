@@ -5,7 +5,32 @@
     "destination": ".github/workflows/lint.yml"
   },
   {
-    "action": "delete",
+    "action": "add",
+    "source": ".gitignore",
+    "destination": ".gitignore"
+  },
+  {
+    "action": "add",
+    "source": "build-contributors.yml",
+    "destination": ".github/workflows/build-contributors.yml"
+  },
+  {
+    "action": "add",
+    "source": "build-site-metadata.yml",
+    "destination": ".github/workflows/build-site-metadata.yml"
+  },
+  {
+    "action": "add",
+    "source": "deploy.yml",
     "destination": ".github/workflows/deploy.yml"
+  },
+  {
+    "action": "add",
+    "source": "package.json",
+    "destination": "package.json"
+  },
+  {
+    "action": "delete",
+    "destination": "dev.mjs"
   }
 ]
