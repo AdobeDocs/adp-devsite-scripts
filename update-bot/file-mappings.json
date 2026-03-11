@@ -1,0 +1,11 @@
+[
+  {
+    "action": "add",
+    "source": "lint.yml",
+    "destination": ".github/workflows/lint.yml"
+  },
+  {
+    "action": "delete",
+    "destination": ".github/workflows/deploy.yml"
+  }
+]
