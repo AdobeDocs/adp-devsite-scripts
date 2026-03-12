@@ -116,9 +116,8 @@ Place the actual files you want to push into this folder. Every `source` value i
 
 The bot will:
 
-- Validate that all resource files exist and all repos are accessible.
-- For each repo, create (or recreate) a branch called `auto-content-update`.
-- Commit all file changes to that branch.
-- Open a pull request from `auto-content-update` into `main`.
-- Print a summary with PR links.
-
+- Validate that all resource files in `file-mappings.json` exist in `resources/`, and that every repo in `repos.json` is accessible with the provided token. The bot aborts if any check fails.
+- For each repo, check if a branch called `auto-content-update` already exists. If it does, the bot commits on top of it; otherwise a new branch is created from `main`.
+- Compare the resulting tree with the current branch state. If all destination files already match the source content, no commit is created and the repo is reported as skipped.
+- Check if an open pull request from `auto-content-update` into `main` already exists. If so, the bot skips PR creation and reports the repo as "PR updated"; otherwise a new PR is opened.
+- Print a summary grouped by PR created, PR updated, skipped, warnings, and failures.
