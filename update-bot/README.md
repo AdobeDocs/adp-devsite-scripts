@@ -21,7 +21,9 @@ Push the same file updates to multiple GitHub repos in one run. The bot creates 
 > ![Github Setting Page](./images/settings.png)
 > 3. Select Personal access tokens -> Tokens(classic) -> Generate new token -> Generate new token (classic)
 > ![Github DEveloper Settings](./images/token.png)
-> 4. Grant basic read and write access to all repos for the token
+> 4. Grant repo and workflow access to the token
+> ![Github DEveloper Access](./images/token%20access.png)
+> 5. Generate token
 > 5. Save the token somewhere
 
 ## Configuration
@@ -50,20 +52,50 @@ An array of repos the bot will push updates to.
 
 ### `file-mappings.json` — files and their destinations
 
-An array mapping each resource file to its target path inside the repos.
+An array of entries that describe files to add or delete in the target repos. Each entry supports two actions: **add** (default) to push a file, and **delete** to remove one.
 
 
-| Field         | Type   | Description                                             |
-| ------------- | ------ | ------------------------------------------------------- |
-| `source`      | string | Filename inside the `resources/` folder                 |
-| `destination` | string | Path in the target repo where the file should be placed |
+| Field         | Type   | Required           | Description                                                            |
+| ------------- | ------ | ------------------ | ---------------------------------------------------------------------- |
+| `action`      | string | No (default `add`) | `"add"` to create/update a file, `"delete"` to remove it              |
+| `source`      | string | For `add` only     | Filename inside the `resources/` folder                                |
+| `destination` | string | Yes                | Path in the target repo where the file should be placed (or removed)   |
 
+#### Adding a file
+
+Set `action` to `"add"` (or omit it) and provide both `source` and `destination`. The file from `resources/` will be created or overwritten at the destination path.
+
+```json
+{
+  "action": "add",
+  "source": "lint.yml",
+  "destination": ".github/workflows/lint.yml"
+}
+```
+
+#### Deleting a file
+
+Set `action` to `"delete"` and provide only `destination`. No `source` is needed. If the file does not exist in the target repo, the deletion is skipped with a warning.
+
+```json
+{
+  "action": "delete",
+  "destination": "dev.mjs"
+}
+```
+
+#### Full example
 
 ```json
 [
   {
+    "action": "add",
     "source": "lint.yml",
     "destination": ".github/workflows/lint.yml"
+  },
+  {
+    "action": "delete",
+    "destination": "dev.mjs"
   }
 ]
 ```
