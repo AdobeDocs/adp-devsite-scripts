@@ -34,6 +34,19 @@ export async function getRef(owner, repo, ref, token) {
   return res.json();
 }
 
+// getRef but returns null when the ref does not exist.
+export async function tryGetRef(owner, repo, ref, token) {
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/git/ref/${ref}`, {
+    headers: authHeaders(token),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`GET ref ${ref} failed: ${res.status} - ${text}`);
+  }
+  return res.json();
+}
+
 // https://docs.github.com/en/rest/git/refs#create-a-reference
 export async function createRef(owner, repo, ref, sha, token) {
   const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/git/refs`, {
@@ -154,6 +167,19 @@ export async function createPullRequest(owner, repo, head, base, title, body, to
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`POST create PR failed: ${res.status} - ${text}`);
+  }
+  return res.json();
+}
+
+// https://docs.github.com/en/rest/pulls/pulls#list-pull-requests
+export async function listPullRequests(owner, repo, head, base, state, token) {
+  const params = new URLSearchParams({ state, head: `${owner}:${head}`, base });
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/pulls?${params}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`GET list PRs failed: ${res.status} - ${text}`);
   }
   return res.json();
 }

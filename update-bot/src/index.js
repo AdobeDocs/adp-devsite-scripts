@@ -4,15 +4,16 @@ import { fileURLToPath } from "node:url";
 import "dotenv/config";
 import {
   getRef,
+  tryGetRef,
   getCommit,
   getContents,
   createRef,
-  deleteRef,
   createBlob,
   createTree,
   createCommit,
   updateRef,
   createPullRequest,
+  listPullRequests,
 } from "./github-api.js";
 import {
   validateReposConfig,
@@ -45,15 +46,28 @@ async function processRepo(repoConfig, mappings, token) {
 
     console.log(`  Fetching main branch SHA...`);
     const mainRef = await getRef(owner, repo, BASE_REF, token);
-    const commitSha = mainRef.object.sha;
-    const baseCommit = await getCommit(owner, repo, commitSha, token);
-    const baseTreeSha = baseCommit.tree.sha;
-    console.log(`  main is at ${commitSha.slice(0, 7)}`);
+    const mainSha = mainRef.object.sha;
+    console.log(`  main is at ${mainSha.slice(0, 7)}`);
 
-    console.log(`  Preparing branch ${BRANCH_NAME}...`);
-    await deleteRef(owner, repo, BRANCH_REF, token);
-    await createRef(owner, repo, BRANCH_REF, commitSha, token);
-    console.log(`  Branch ${BRANCH_NAME} created from main`);
+    console.log(`  Checking for existing branch ${BRANCH_NAME}...`);
+    const existingBranch = await tryGetRef(owner, repo, BRANCH_REF, token);
+
+    let parentSha, baseTreeSha, contentRef;
+
+    if (existingBranch) {
+      parentSha = existingBranch.object.sha;
+      const branchCommit = await getCommit(owner, repo, parentSha, token);
+      baseTreeSha = branchCommit.tree.sha;
+      contentRef = BRANCH_NAME;
+      console.log(`  Branch exists at ${parentSha.slice(0, 7)}, will commit on top`);
+    } else {
+      parentSha = mainSha;
+      const mainCommit = await getCommit(owner, repo, mainSha, token);
+      baseTreeSha = mainCommit.tree.sha;
+      contentRef = "main";
+      await createRef(owner, repo, BRANCH_REF, mainSha, token);
+      console.log(`  Branch ${BRANCH_NAME} created from main`);
+    }
 
     console.log(`  Processing ${mappings.length} file mapping(s)...`);
     const treeEntries = [];
@@ -64,7 +78,7 @@ async function processRepo(repoConfig, mappings, token) {
       const { destination } = mapping;
 
       if (action === "delete") {
-        const exists = await getContents(owner, repo, destination, "main", token);
+        const exists = await getContents(owner, repo, destination, contentRef, token);
         if (!exists) {
           console.log(`    [delete] ${destination} — not found, skipping`);
           warnings.push(`${label}: delete target not found: ${destination}`);
@@ -94,17 +108,23 @@ async function processRepo(repoConfig, mappings, token) {
 
     if (tree.sha === baseTreeSha) {
       console.log(`  No changes detected — all files already up to date`);
-      await deleteRef(owner, repo, BRANCH_REF, token);
-      console.log(`  Cleaned up branch ${BRANCH_NAME}`);
       return { owner, repo, success: true, skipped: true, warnings };
     }
 
     const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
     const commitMessage = `Auto content update (${timestamp})`;
-    const commit = await createCommit(owner, repo, commitMessage, tree.sha, commitSha, token);
+    const commit = await createCommit(owner, repo, commitMessage, tree.sha, parentSha, token);
     console.log(`  Commit created: ${commit.sha.slice(0, 7)}`);
 
     await updateRef(owner, repo, BRANCH_REF, commit.sha, token);
+
+    const openPRs = await listPullRequests(owner, repo, BRANCH_NAME, "main", "open", token);
+
+    if (openPRs.length > 0) {
+      const existingPR = openPRs[0];
+      console.log(`  Open PR already exists: ${existingPR.html_url} — skipping PR creation`);
+      return { owner, repo, success: true, prUrl: existingPR.html_url, prExisted: true, warnings };
+    }
 
     const addedFiles = mappings.filter((m) => (m.action ?? "add") === "add");
     const deletedFiles = mappings.filter((m) => m.action === "delete");
@@ -188,13 +208,21 @@ async function main() {
   }
 
   console.log("\n=== Summary ===\n");
-  const created = results.filter((r) => r.success && !r.skipped);
+  const created = results.filter((r) => r.success && !r.skipped && !r.prExisted);
+  const updated = results.filter((r) => r.success && r.prExisted);
   const skipped = results.filter((r) => r.success && r.skipped);
   const failures = results.filter((r) => !r.success);
 
   if (created.length > 0) {
     console.log(`PR created (${created.length}):`);
     for (const r of created) {
+      console.log(`  ${r.owner}/${r.repo}: ${r.prUrl}`);
+    }
+  }
+
+  if (updated.length > 0) {
+    console.log(`\nPR updated (${updated.length}):`);
+    for (const r of updated) {
       console.log(`  ${r.owner}/${r.repo}: ${r.prUrl}`);
     }
   }
