@@ -20,10 +20,10 @@ When fixing `package.json`, compare the **original** (base branch) with the **PR
 - `"repository"` -- keep the entire object with the repo-specific URL, if not, update it to repo-specific url.
 - `"config"` -- keep the config enchanged 
 - `"author"` -- if the author does not exist, or the author name is not Stephan Ringel, remain the same. Otherwise, accept the template's author
+- `"scripts"` -- For the `scripts` field: do NOT remove any keys that exist in the original file but are missing from the template; if a key exists in both the original and the template, overwrite its value with the template's value; if the template has a key that is not present in the original, add it to `scripts`.
 
 ### Accept from template (overwrite with bot's version)
 
-- `"scripts"` -- accept all script updates from the template. This is the primary content the bot is pushing.
 - `"devDependencies"` -- accept dependency updates from the template.
 - `"dependencies"` -- accept dependency updates from the template if present.
 
