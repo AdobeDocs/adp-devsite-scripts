@@ -72,6 +72,7 @@ async function processRepo(repoConfig, mappings, token) {
     console.log(`  Processing ${mappings.length} file mapping(s)...`);
     const treeEntries = [];
     const warnings = [];
+    const overwrittenFiles = [];
 
     for (const mapping of mappings) {
       const action = mapping.action ?? "add";
@@ -92,6 +93,10 @@ async function processRepo(repoConfig, mappings, token) {
         });
         console.log(`    [delete] ${destination}`);
       } else {
+        const existing = await getContents(owner, repo, destination, contentRef, token);
+        if (existing) {
+          overwrittenFiles.push(destination);
+        }
         const content = fs.readFileSync(path.join(RESOURCES_DIR, mapping.source), "utf-8");
         const blob = await createBlob(owner, repo, content, token);
         treeEntries.push({
@@ -100,7 +105,7 @@ async function processRepo(repoConfig, mappings, token) {
           type: "blob",
           sha: blob.sha,
         });
-        console.log(`    [add] ${mapping.source} -> ${destination}`);
+        console.log(`    [${existing ? "overwrite" : "add"}] ${mapping.source} -> ${destination}`);
       }
     }
 
@@ -129,17 +134,28 @@ async function processRepo(repoConfig, mappings, token) {
     const addedFiles = mappings.filter((m) => (m.action ?? "add") === "add");
     const deletedFiles = mappings.filter((m) => m.action === "delete");
 
+    const ownerRequired = repoConfig.ownerRequired ?? overwrittenFiles.length > 0;
+
     const prBodyParts = [
       "## Auto Content Update",
       "",
       "This PR was created automatically by **update-bot**.",
     ];
 
-    if (addedFiles.length > 0) {
+    if (overwrittenFiles.length > 0) {
       prBodyParts.push(
         "",
-        "### Updated files",
-        addedFiles.map((m) => `- \`${m.destination}\``).join("\n")
+        "### Overwritten files (already existed in repo)",
+        overwrittenFiles.map((f) => `- \`${f}\``).join("\n")
+      );
+    }
+
+    const newFiles = addedFiles.filter((m) => !overwrittenFiles.includes(m.destination));
+    if (newFiles.length > 0) {
+      prBodyParts.push(
+        "",
+        "### New files",
+        newFiles.map((m) => `- \`${m.destination}\``).join("\n")
       );
     }
 
@@ -153,7 +169,7 @@ async function processRepo(repoConfig, mappings, token) {
 
     prBodyParts.push(
       "",
-      `_Owner review required: ${repoConfig.ownerRequired ? "Yes" : "No"}_`
+      `_Owner review required: ${ownerRequired ? "Yes" : "No"}_`
     );
 
     const prBody = prBodyParts.join("\n");

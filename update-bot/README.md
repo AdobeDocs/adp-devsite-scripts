@@ -33,19 +33,18 @@ Push the same file updates to multiple GitHub repos in one run. The bot creates 
 An array of repos the bot will push updates to.
 
 
-| Field           | Type    | Description                                                       |
-| --------------- | ------- | ----------------------------------------------------------------- |
-| `owner`         | string  | GitHub org or user (e.g. `"AdobeDocs"`)                           |
-| `repo`          | string  | Repository name                                                   |
-| `ownerRequired` | boolean | `true` if the PR should note that a repo owner review is required |
+| Field           | Type    | Required | Description                                                       |
+| --------------- | ------- | -------- | ----------------------------------------------------------------- |
+| `owner`         | string  | Yes      | GitHub org or user (e.g. `"AdobeDocs"`)                           |
+| `repo`          | string  | Yes      | Repository name                                                   |
+| `ownerRequired` | boolean | No       | Force the PR to note that owner review is required. If omitted, auto-detected: `true` when any file in the PR overwrites an existing file, `false` when all files are new additions or deletions. |
 
 
 ```json
 [
   {
     "owner": "AdobeDocs",
-    "repo": "dev-docs-template",
-    "ownerRequired": false
+    "repo": "dev-docs-template"
   }
 ]
 ```

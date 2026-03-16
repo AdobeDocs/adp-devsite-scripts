@@ -17,8 +17,8 @@ export function validateReposConfig(repos) {
     if (!entry.repo || typeof entry.repo !== "string") {
       throw new Error(`Invalid repo entry: "repo" must be a non-empty string. Got: ${JSON.stringify(entry)}`);
     }
-    if (typeof entry.ownerRequired !== "boolean") {
-      throw new Error(`Invalid repo entry: "ownerRequired" must be a boolean. Got: ${JSON.stringify(entry)}`);
+    if (entry.ownerRequired !== undefined && typeof entry.ownerRequired !== "boolean") {
+      throw new Error(`Invalid repo entry: "ownerRequired" must be a boolean if provided. Got: ${JSON.stringify(entry)}`);
     }
     const key = `${entry.owner}/${entry.repo}`;
     if (seen.has(key)) {
