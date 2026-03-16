@@ -16,7 +16,7 @@ When fixing `package.json`, compare the **original** (base branch) with the **PR
 ### Preserve from original (do NOT overwrite)
 
 - `"private"` -- keep the original value if it exists; do not remove it.
-- `"name"` -- keep the repo-specific name (e.g., `"adp-devsite-github-actions-test"`), if the name does not exist or is not repo-specific name, update it
+- `"name"` -- keep the reasonable repo-specific name (e.g., `"adp-devsite-github-actions-test"` or `Adp Devsite Github Actions Test` for repo `"adp-devsite-github-actions-test"`), if the name does not exist or is not repo-specific name, update it
 - `"repository"` -- keep the entire object with the repo-specific URL, if not, update it to repo-specific url.
 - `"config"` -- keep the config enchanged 
 - `"author"` -- if the author does not exist, or the author name is not Stephan Ringel, remain the same. Otherwise, accept the template's author
@@ -26,6 +26,7 @@ When fixing `package.json`, compare the **original** (base branch) with the **PR
 
 - `"devDependencies"` -- accept dependency updates from the template.
 - `"dependencies"` -- accept dependency updates from the template if present.
+- `"packageManager"` -- delete if this exist in the original file.
 
 ### Key ordering
 
