@@ -1,12 +1,7 @@
 [
   {
     "owner": "AdobeDocs",
-    "repo": "dev-docs-template",
-    "ownerRequired": false
-  },
-  {
-    "owner": "AdobeDocs",
-    "repo": "adp-devsite-github-actions-test",
+    "repo": "commerce-cloud-tools",
     "ownerRequired": false
   }
 ]

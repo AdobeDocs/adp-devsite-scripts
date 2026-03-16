@@ -1,11 +1,17 @@
 [
   {
     "action": "add",
+    "source": "package.json",
+    "destination": "package.json"
+  },
+  {
+    "action": "add",
     "source": "lint.yml",
     "destination": ".github/workflows/lint.yml"
   },
   {
-    "action": "delete",
-    "destination": ".github/workflows/deploy.yml"
+    "action": "add",
+    "source": ".gitignore",
+    "destination": ".gitignore"
   }
 ]

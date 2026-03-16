@@ -1,0 +1,104 @@
+---
+description: Fix update-bot PRs by applying policy rules to preserve repo-specific content. Activate when user provides a GitHub PR URL and references a policy rule.
+alwaysApply: true
+---
+
+# update-bot PR Fixer
+
+When the user provides a **GitHub PR URL** (e.g., `https://github.com/{owner}/{repo}/pull/{number}`) and references a policy rule (via `@`-mention), follow this workflow to fix the PR.
+
+The user will also list which files need fixing. **Only process those files** -- skip all other changed files in the PR.
+
+## Prerequisites
+
+- The `gh` CLI must be authenticated (`gh auth status` to verify).
+- The user must `@`-mention a policy rule (e.g., `@update-bot-pr-policy`) that defines the file-specific fix rules.
+
+## Workflow
+
+### Step 1: Parse the PR URL
+
+Extract `{owner}`, `{repo}`, and `{pr_number}` from the URL.
+
+Example: `https://github.com/AdobeDocs/adp-devsite-github-actions-test/pull/116`
+→ owner=`AdobeDocs`, repo=`adp-devsite-github-actions-test`, pr_number=`116`
+
+### Step 2: Fetch PR metadata
+
+```bash
+gh pr view {url} --json number,headRefName,baseRefName,changedFiles,url
+```
+
+Extract `headRefName` (the PR branch) and `baseRefName` (e.g., `main`).
+
+### Step 3: Fetch the PR diff
+
+```bash
+gh pr diff {url}
+```
+
+Display a summary of the diff to the user so they can see what the bot changed.
+
+### Step 4: Fetch file contents (only user-specified files)
+
+For **each file the user listed**, fetch both the original (base branch) version and the current PR branch version.
+
+**Original content (base branch):**
+```bash
+gh api "repos/{owner}/{repo}/contents/{path}?ref={baseRefName}" --jq '.content' | base64 -d
+```
+
+**PR branch content + SHA (needed for the update API):**
+```bash
+gh api "repos/{owner}/{repo}/contents/{path}?ref={headRefName}" --jq '{content: .content, sha: .sha}'
+```
+
+Decode the base64 content from the PR branch as well.
+
+If a file does not exist on the base branch (new file), there is nothing to preserve -- skip it unless the policy rule has specific instructions for new files.
+
+### Step 5: Read the policy rule
+
+Read the `@`-mentioned policy rule to determine what to preserve and what to accept for each file. The policy rule contains per-file instructions (e.g., which fields to keep from the original `package.json`).
+
+### Step 6: Generate fixed file content
+
+For each file the user listed:
+
+1. Parse the **original** content (from base branch) -- this is what the repo had before the bot touched it.
+2. Parse the **PR branch** content -- this is what the bot pushed (the template).
+3. Apply the policy rule to produce a **merged** result:
+   - Fields/lines the policy says to **preserve** → use the original value.
+   - Fields/lines the policy says to **accept from template** → use the PR branch value.
+   - Fields/lines only in the original and not in the template → follow the policy (usually preserve).
+
+Show the user the planned fixed content vs. the current PR content, so they can review before committing.
+
+### Step 7: Commit and push
+
+For each fixed file, write the fixed content to a temporary file and push it via the GitHub Contents API:
+
+```bash
+gh api "repos/{owner}/{repo}/contents/{path}" \
+  -X PUT \
+  -f message="fix: preserve repo-specific fields in {path}" \
+  -f content="$(base64 -i /tmp/fixed_{filename})" \
+  -f sha="{current_sha}" \
+  -f branch="{headRefName}"
+```
+
+If multiple files need fixing, commit them one at a time (the Contents API works per-file).
+
+### Step 8: Report
+
+After all files are updated, report:
+- Which files were fixed and what was preserved.
+- Which files were skipped (not listed by the user).
+- The PR URL for the user to review.
+
+## Guardrails
+
+- **Always show planned changes** before committing. If the user has not confirmed, ask before pushing.
+- **Never force-push** or rewrite history on the PR branch.
+- **One file at a time** -- commit each file fix separately so it is easy to revert if needed.
+- If `gh` is not authenticated, stop and instruct the user to run `gh auth login`.
