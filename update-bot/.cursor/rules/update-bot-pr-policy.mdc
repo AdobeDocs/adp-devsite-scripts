@@ -43,4 +43,3 @@ When fixing `.gitignore`:
 - If the template has entries that duplicate existing ones, skip the duplicates.
 - Preserve the original file's grouping and comment structure.
 - Append new entries at the end, optionally under a comment like `# Added by update-bot`.
-- DO NOT add any additional comments in the file
