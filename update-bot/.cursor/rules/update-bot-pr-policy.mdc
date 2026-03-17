@@ -41,5 +41,5 @@ When fixing `.gitignore`:
 - replace `package.lock` with `package-lock.json`.
 - delete `adp-site-metadata.json` if exists in the original file.
 - If the template has entries that duplicate existing ones, skip the duplicates.
-- Preserve the original file's grouping and comment structure.
+- reorgnize the grouping of content, with a title comment on the top.
 - Append new entries at the end, optionally under a comment like `# Added by update-bot`.
