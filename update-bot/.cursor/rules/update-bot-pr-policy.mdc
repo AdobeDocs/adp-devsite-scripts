@@ -24,7 +24,7 @@ When fixing `package.json`, compare the **original** (base branch) with the **PR
 
 ### Accept from template (overwrite with bot's version)
 
-- `"devDependencies"` -- accept dependency updates from the template.
+- `"devDependencies"` -- remove devDependencies if exists in original file.
 - `"dependencies"` -- accept dependency updates from the template if present.
 - `"packageManager"` -- delete if this exist in the original file.
 
