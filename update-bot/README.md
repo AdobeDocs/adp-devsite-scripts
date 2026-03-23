@@ -49,37 +49,36 @@ An array of repos the bot will push updates to.
 ]
 ```
 
-### `file-mappings.json` — files and their destinations
+### `file-mappings.json` — files and their paths
 
 An array of entries that describe files to add or delete in the target repos. Each entry supports two actions: **add** (default) to push a file, and **delete** to remove one.
 
+For `add` entries, the `path` refers to the file path in both the source template repo ([AdobeDocs/dev-docs-template](https://github.com/AdobeDocs/dev-docs-template)) and the target repo. The bot fetches the file from the template repo at that path and pushes it to the same path in each target repo.
 
-| Field         | Type   | Required           | Description                                                            |
-| ------------- | ------ | ------------------ | ---------------------------------------------------------------------- |
-| `action`      | string | No (default `add`) | `"add"` to create/update a file, `"delete"` to remove it              |
-| `source`      | string | For `add` only     | Filename inside the `resources/` folder                                |
-| `destination` | string | Yes                | Path in the target repo where the file should be placed (or removed)   |
+| Field    | Type   | Required           | Description                                                                      |
+| -------- | ------ | ------------------ | -------------------------------------------------------------------------------- |
+| `action` | string | No (default `add`) | `"add"` to create/update a file, `"delete"` to remove it                        |
+| `path`   | string | Yes                | File path in the template repo (for `add`) and in the target repo (for both)     |
 
 #### Adding a file
 
-Set `action` to `"add"` (or omit it) and provide both `source` and `destination`. The file from `resources/` will be created or overwritten at the destination path.
+Set `action` to `"add"` (or omit it) and provide `path`. The file is fetched from `dev-docs-template` at the given path and created or overwritten in each target repo.
 
 ```json
 {
   "action": "add",
-  "source": "lint.yml",
-  "destination": ".github/workflows/lint.yml"
+  "path": ".github/workflows/lint.yml"
 }
 ```
 
 #### Deleting a file
 
-Set `action` to `"delete"` and provide only `destination`. No `source` is needed. If the file does not exist in the target repo, the deletion is skipped with a warning.
+Set `action` to `"delete"` and provide `path`. If the file does not exist in the target repo, the deletion is skipped with a warning.
 
 ```json
 {
   "action": "delete",
-  "destination": "dev.mjs"
+  "path": "dev.mjs"
 }
 ```
 
@@ -89,34 +88,29 @@ Set `action` to `"delete"` and provide only `destination`. No `source` is needed
 [
   {
     "action": "add",
-    "source": "lint.yml",
-    "destination": ".github/workflows/lint.yml"
+    "path": ".github/workflows/lint.yml"
   },
   {
     "action": "delete",
-    "destination": "dev.mjs"
+    "path": "dev.mjs"
   }
 ]
 ```
 
-### `resources/` — files to distribute
-
-Place the actual files you want to push into this folder. Every `source` value in `file-mappings.json` must have a corresponding file here.
-
 ## Usage
 
-1. Drop the files you want to distribute into `resources/`.
-2. Edit `file-mappings.json` to map each file to its destination path.
-3. Edit `repos.json` to list the target repos.
-4. Run:
+1. Edit `file-mappings.json` to list the file paths to sync from [dev-docs-template](https://github.com/AdobeDocs/dev-docs-template).
+2. Edit `repos.json` to list the target repos.
+3. Run:
   ```bash
    npm start
   ```
 
 The bot will:
 
-- Validate that all resource files in `file-mappings.json` exist in `resources/`, and that every repo in `repos.json` is accessible with the provided token. The bot aborts if any check fails.
-- For each repo, check if a branch called `auto-content-update` already exists. If it does, the bot commits on top of it; otherwise a new branch is created from `main`.
-- Compare the resulting tree with the current branch state. If all destination files already match the source content, no commit is created and the repo is reported as skipped.
+- Validate configuration and that every repo in `repos.json` is accessible with the provided token. The bot aborts if any check fails.
+- Fetch each `add` file from the [AdobeDocs/dev-docs-template](https://github.com/AdobeDocs/dev-docs-template) repo on GitHub.
+- For each target repo, check if a branch called `auto-content-update` already exists. If it does, the bot commits on top of it; otherwise a new branch is created from `main`.
+- Compare the resulting tree with the current branch state. If all files already match the template content, no commit is created and the repo is reported as skipped.
 - Check if an open pull request from `auto-content-update` into `main` already exists. If so, the bot skips PR creation and reports the repo as "PR updated"; otherwise a new PR is opened.
 - Print a summary grouped by PR created, PR updated, skipped, warnings, and failures.

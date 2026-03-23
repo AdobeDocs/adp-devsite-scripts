@@ -7,6 +7,7 @@ import {
   tryGetRef,
   getCommit,
   getContents,
+  getRawContent,
   createRef,
   createBlob,
   createTree,
@@ -18,15 +19,17 @@ import {
 import {
   validateReposConfig,
   validateFileMappings,
-  validateResourceFiles,
   validateReposAccessible,
 } from "./validator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const RESOURCES_DIR = path.join(ROOT, "resources");
 const REPOS_CONFIG = path.join(ROOT, "repos.json");
 const MAPPINGS_CONFIG = path.join(ROOT, "file-mappings.json");
+
+const TEMPLATE_OWNER = "AdobeDocs";
+const TEMPLATE_REPO = "dev-docs-template";
+const TEMPLATE_REF = "main";
 
 const BRANCH_NAME = "auto-content-update";
 const BRANCH_REF = `heads/${BRANCH_NAME}`;
@@ -37,7 +40,7 @@ function loadJson(filePath) {
   return JSON.parse(raw);
 }
 
-async function processRepo(repoConfig, mappings, token) {
+async function processRepo(repoConfig, mappings, templateContents, token) {
   const { owner, repo } = repoConfig;
   const label = `${owner}/${repo}`;
 
@@ -76,36 +79,36 @@ async function processRepo(repoConfig, mappings, token) {
 
     for (const mapping of mappings) {
       const action = mapping.action ?? "add";
-      const { destination } = mapping;
+      const filePath = mapping.path;
 
       if (action === "delete") {
-        const exists = await getContents(owner, repo, destination, contentRef, token);
+        const exists = await getContents(owner, repo, filePath, contentRef, token);
         if (!exists) {
-          console.log(`    [delete] ${destination} — not found, skipping`);
-          warnings.push(`${label}: delete target not found: ${destination}`);
+          console.log(`    [delete] ${filePath} — not found, skipping`);
+          warnings.push(`${label}: delete target not found: ${filePath}`);
           continue;
         }
         treeEntries.push({
-          path: destination,
+          path: filePath,
           mode: "100644",
           type: "blob",
           sha: null,
         });
-        console.log(`    [delete] ${destination}`);
+        console.log(`    [delete] ${filePath}`);
       } else {
-        const existing = await getContents(owner, repo, destination, contentRef, token);
+        const existing = await getContents(owner, repo, filePath, contentRef, token);
         if (existing) {
-          overwrittenFiles.push(destination);
+          overwrittenFiles.push(filePath);
         }
-        const content = fs.readFileSync(path.join(RESOURCES_DIR, mapping.source), "utf-8");
+        const content = templateContents.get(filePath);
         const blob = await createBlob(owner, repo, content, token);
         treeEntries.push({
-          path: destination,
+          path: filePath,
           mode: "100644",
           type: "blob",
           sha: blob.sha,
         });
-        console.log(`    [${existing ? "overwrite" : "add"}] ${mapping.source} -> ${destination}`);
+        console.log(`    [${existing ? "overwrite" : "add"}] ${filePath}`);
       }
     }
 
@@ -150,12 +153,12 @@ async function processRepo(repoConfig, mappings, token) {
       );
     }
 
-    const newFiles = addedFiles.filter((m) => !overwrittenFiles.includes(m.destination));
+    const newFiles = addedFiles.filter((m) => !overwrittenFiles.includes(m.path));
     if (newFiles.length > 0) {
       prBodyParts.push(
         "",
         "### New files",
-        newFiles.map((m) => `- \`${m.destination}\``).join("\n")
+        newFiles.map((m) => `- \`${m.path}\``).join("\n")
       );
     }
 
@@ -163,7 +166,7 @@ async function processRepo(repoConfig, mappings, token) {
       prBodyParts.push(
         "",
         "### Deleted files",
-        deletedFiles.map((m) => `- \`${m.destination}\``).join("\n")
+        deletedFiles.map((m) => `- \`${m.path}\``).join("\n")
       );
     }
 
@@ -210,16 +213,24 @@ async function main() {
   console.log("Validating configuration...");
   validateReposConfig(rawRepos);
   validateFileMappings(rawMappings);
-  validateResourceFiles(rawMappings, RESOURCES_DIR);
   console.log(`  ${rawRepos.length} repo(s), ${rawMappings.length} file mapping(s) — all valid`);
 
   console.log("Checking repo access...");
   await validateReposAccessible(rawRepos, token);
   console.log("  All repos accessible");
 
+  console.log(`Fetching template files from ${TEMPLATE_OWNER}/${TEMPLATE_REPO}...`);
+  const templateContents = new Map();
+  for (const mapping of rawMappings) {
+    if ((mapping.action ?? "add") !== "add") continue;
+    const content = await getRawContent(TEMPLATE_OWNER, TEMPLATE_REPO, mapping.path, TEMPLATE_REF, token);
+    templateContents.set(mapping.path, content);
+    console.log(`  Fetched ${mapping.path}`);
+  }
+
   const results = [];
   for (const repoConfig of rawRepos) {
-    const result = await processRepo(repoConfig, rawMappings, token);
+    const result = await processRepo(repoConfig, rawMappings, templateContents, token);
     results.push(result);
   }
 

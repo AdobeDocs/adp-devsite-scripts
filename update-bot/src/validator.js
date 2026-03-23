@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { getRepo } from "./github-api.js";
 
 export function validateReposConfig(repos) {
@@ -37,7 +35,7 @@ export function validateFileMappings(mappings) {
   if (mappings.length === 0) {
     throw new Error("file-mappings.json is empty — add at least one file mapping");
   }
-  const seenSources = new Set();
+  const seenPaths = new Set();
   for (const entry of mappings) {
     const action = entry.action ?? "add";
     if (!VALID_ACTIONS.includes(action)) {
@@ -45,33 +43,13 @@ export function validateFileMappings(mappings) {
         `Invalid mapping entry: "action" must be one of ${JSON.stringify(VALID_ACTIONS)}. Got: ${JSON.stringify(entry)}`
       );
     }
-    if (action === "add") {
-      if (!entry.source || typeof entry.source !== "string") {
-        throw new Error(`Invalid mapping entry: "source" must be a non-empty string for action "add". Got: ${JSON.stringify(entry)}`);
-      }
-      if (seenSources.has(entry.source)) {
-        throw new Error(`Duplicate source in file-mappings.json: ${entry.source}`);
-      }
-      seenSources.add(entry.source);
+    if (!entry.path || typeof entry.path !== "string") {
+      throw new Error(`Invalid mapping entry: "path" must be a non-empty string. Got: ${JSON.stringify(entry)}`);
     }
-    if (!entry.destination || typeof entry.destination !== "string") {
-      throw new Error(`Invalid mapping entry: "destination" must be a non-empty string. Got: ${JSON.stringify(entry)}`);
+    if (seenPaths.has(entry.path)) {
+      throw new Error(`Duplicate path in file-mappings.json: ${entry.path}`);
     }
-  }
-}
-
-export function validateResourceFiles(mappings, resourcesDir) {
-  for (const entry of mappings) {
-    const action = entry.action ?? "add";
-    if (action !== "add") continue;
-    const fullPath = path.resolve(resourcesDir, entry.source);
-    if (!fs.existsSync(fullPath)) {
-      throw new Error(`Resource file not found: ${entry.source} (expected at ${fullPath})`);
-    }
-    const stat = fs.statSync(fullPath);
-    if (!stat.isFile()) {
-      throw new Error(`Resource path is not a file: ${entry.source}`);
-    }
+    seenPaths.add(entry.path);
   }
 }
 

@@ -1,17 +1,14 @@
 [
   {
     "action": "add",
-    "source": "package.json",
-    "destination": "package.json"
+    "path": "package.json"
   },
   {
     "action": "add",
-    "source": "lint.yml",
-    "destination": ".github/workflows/lint.yml"
+    "path": ".github/workflows/lint.yml"
   },
   {
     "action": "add",
-    "source": ".gitignore",
-    "destination": ".gitignore"
+    "path": ".gitignore"
   }
 ]

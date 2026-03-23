@@ -97,6 +97,19 @@ export async function getContents(owner, repo, filePath, ref, token) {
   return res.json();
 }
 
+// https://docs.github.com/en/rest/repos/contents#get-repository-content (raw)
+export async function getRawContent(owner, repo, filePath, ref, token) {
+  const url = `${API_BASE}/repos/${owner}/${repo}/contents/${filePath}?ref=${ref}`;
+  const res = await fetch(url, {
+    headers: { ...authHeaders(token), Accept: "application/vnd.github.raw+json" },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`GET raw content ${filePath} failed: ${res.status} - ${text}`);
+  }
+  return res.text();
+}
+
 // https://docs.github.com/en/rest/git/blobs#create-a-blob
 export async function createBlob(owner, repo, content, token) {
   const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/git/blobs`, {
