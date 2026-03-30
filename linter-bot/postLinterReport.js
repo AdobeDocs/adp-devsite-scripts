@@ -87,19 +87,32 @@ ${reportContent}
 }
 
 /**
+ * Resolve PR number from PR_ID env var or PR_NUMBER_PATH file.
+ * The file-based approach supports workflow_run triggers where PR context
+ * is passed via artifact instead of the event payload.
+ * @returns {string} PR number
+ */
+function resolvePRNumber() {
+    if (process.env.PR_ID) {
+        return process.env.PR_ID.trim();
+    }
+
+    const prNumberPath = process.env.PR_NUMBER_PATH;
+    if (prNumberPath && fs.existsSync(prNumberPath)) {
+        const prNumber = fs.readFileSync(prNumberPath, 'utf8').trim();
+        if (prNumber) return prNumber;
+    }
+
+    console.error('❌ Error: PR number is required. Set PR_ID env var or PR_NUMBER_PATH pointing to a file containing the PR number.');
+    process.exit(1);
+}
+
+/**
  * Main execution function
  */
 async function main() {
-    // Get required environment variables
-    const prId = process.env.PR_ID;
     const githubToken = process.env.GITHUB_TOKEN;
     const githubRepository = process.env.GITHUB_REPOSITORY; // format: owner/repo
-
-    // Validate required environment variables
-    if (!prId) {
-        console.error('❌ Error: PR_ID environment variable is required');
-        process.exit(1);
-    }
 
     if (!githubToken) {
         console.error('❌ Error: GITHUB_TOKEN environment variable is required');
@@ -111,14 +124,14 @@ async function main() {
         process.exit(1);
     }
 
-    // Parse owner and repo from GITHUB_REPOSITORY
+    const prId = resolvePRNumber();
+
     const [owner, repo] = githubRepository.split('/');
     if (!owner || !repo) {
         console.error('❌ Error: GITHUB_REPOSITORY must be in format "owner/repo"');
         process.exit(1);
     }
 
-    // Determine report path (default to current working directory)
     const reportPath = process.env.LINTER_REPORT_PATH || path.join(process.cwd(), 'linter-report.txt');
 
     console.log('📋 Linter Report Bot');
@@ -129,14 +142,11 @@ async function main() {
     console.log('─'.repeat(50));
 
     try {
-        // Read the linter report
         console.log('📖 Reading linter report...');
         const reportContent = readLinterReport(reportPath);
         
-        // Format as markdown
         const markdownComment = formatReportAsMarkdown(reportContent);
         
-        // Post comment to PR
         console.log('📝 Posting comment to PR...');
         const result = await createPRComment(owner, repo, parseInt(prId, 10), markdownComment, githubToken);
         
@@ -144,7 +154,14 @@ async function main() {
         console.log(`   Comment URL: ${result.html_url}`);
         
     } catch (error) {
-        console.error(`❌ Failed to post linter report: ${error.message}`);
+        if (error.message.includes('403') && error.message.includes('Resource not accessible')) {
+            console.error('❌ Failed to post linter report: GITHUB_TOKEN lacks write permissions.');
+            console.error('   For fork PRs, the default GITHUB_TOKEN is read-only.');
+            console.error('   Use a workflow_run trigger so the comment step runs in the base repo context.');
+            console.error('   See: https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_run');
+        } else {
+            console.error(`❌ Failed to post linter report: ${error.message}`);
+        }
         process.exit(1);
     }
 }
@@ -156,5 +173,6 @@ main();
 export {
     readLinterReport,
     createPRComment,
-    formatReportAsMarkdown
+    formatReportAsMarkdown,
+    resolvePRNumber
 };
