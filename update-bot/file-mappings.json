@@ -1,0 +1,14 @@
+[
+  {
+    "action": "add",
+    "path": "package.json"
+  },
+  {
+    "action": "add",
+    "path": ".github/workflows/lint.yml"
+  },
+  {
+    "action": "add",
+    "path": ".gitignore"
+  }
+]

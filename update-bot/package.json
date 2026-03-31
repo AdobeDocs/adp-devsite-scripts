@@ -1,0 +1,16 @@
+{
+  "name": "update-bot",
+  "version": "1.0.0",
+  "description": "Bot to push shared content updates to multiple GitHub repos via PRs",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

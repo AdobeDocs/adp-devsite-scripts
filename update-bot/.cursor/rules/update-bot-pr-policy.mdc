@@ -1,0 +1,45 @@
+---
+description: Policy rules for fixing update-bot PRs. Defines what to preserve and what to accept from the template for each file type. Referenced by pr-fixer when the user @-mentions this rule.
+alwaysApply: false
+---
+
+# update-bot PR Fix Policy
+
+This rule defines how to fix files in update-bot PRs. When the bot overwrites a file with template content, these rules specify which parts to keep from the original repo and which parts to accept from the template.
+
+Edit this file to customize the fix behavior for your team.
+
+## package.json
+
+When fixing `package.json`, compare the **original** (base branch) with the **PR version** (template pushed by the bot):
+
+### Preserve from original (do NOT overwrite)
+
+- `"private"` -- keep the original value if it exists; do not remove it.
+- `"name"` -- keep the reasonable repo-specific name (e.g., `"adp-devsite-github-actions-test"` or `Adp Devsite Github Actions Test` for repo `"adp-devsite-github-actions-test"`), if the name does not exist or is not repo-specific name, update it
+- `"repository"` -- keep the entire object with the repo-specific URL, if not, update it to repo-specific url.
+- `"config"` -- keep the config enchanged 
+- `"author"` -- if the author does not exist, or the author name is not Stephan Ringel, remain the same. Otherwise, accept the template's author
+- `"scripts"` -- For the `scripts` field: do NOT remove any keys that exist in the original file but are missing from the template; if a key exists in both the original and the template, overwrite its value with the template's value; if the template has a key that is not present in the original, add it to `scripts`.
+
+### Accept from template (overwrite with bot's version)
+
+- `"devDependencies"` -- remove devDependencies if exists in original file.
+- `"dependencies"` -- accept dependency updates from the template if present.
+- `"packageManager"` -- delete if this exist in the original file.
+
+### Key ordering
+
+Preserve the key order from the original `package.json`. Insert any new keys from the template at a logical position (e.g., `"scripts"` after `"author"`, `"devDependencies"` after `"scripts"`).
+
+## .gitignore
+
+When fixing `.gitignore`:
+
+- **Never remove** existing entries from the original `.gitignore`.
+- **Add** any new entries from the template that are not already present.
+- replace `package.lock` with `package-lock.json`.
+- delete `adp-site-metadata.json` if exists in the original file.
+- If the template has entries that duplicate existing ones, skip the duplicates.
+- reorgnize the grouping of content, with a title comment on the top.
+- Append new entries at the end, optionally under a comment like `# Added by update-bot`.

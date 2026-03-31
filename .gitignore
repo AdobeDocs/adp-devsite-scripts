@@ -1,0 +1,10 @@
+
+update-bot/node_modules/
+
+update-bot/.DS_Store
+
+update-bot/.env
+
+update-bot/package-lock.json
+
+.DS_Store
