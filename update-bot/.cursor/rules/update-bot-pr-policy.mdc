@@ -22,6 +22,10 @@ When fixing `package.json`, compare the **original** (base branch) with the **PR
 - `"author"` -- if the author does not exist, or the author name is not Stephan Ringel, remain the same. Otherwise, accept the template's author
 - `"scripts"` -- For the `scripts` field: do NOT remove any keys that exist in the original file but are missing from the template; if a key exists in both the original and the template, overwrite its value with the template's value; if the template has a key that is not present in the original, add it to `scripts`.
 
+### Ensure when merging
+
+- `"engines"` -- The merged `package.json` must include `"engines": { "node": "^24.11.0" }`. If the original already has an `engines` object with other keys, keep those keys and set `node` to `^24.11.0`.
+
 ### Accept from template (overwrite with bot's version)
 
 - `"devDependencies"` -- remove devDependencies if exists in original file.
