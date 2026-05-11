@@ -53,12 +53,13 @@ An array of repos the bot will push updates to.
 
 An array of entries that describe files to add or delete in the target repos. Each entry supports two actions: **add** (default) to push a file, and **delete** to remove one.
 
-For `add` entries, the `path` refers to the file path in both the source template repo ([AdobeDocs/dev-docs-template](https://github.com/AdobeDocs/dev-docs-template)) and the target repo. The bot fetches the file from the template repo at that path and pushes it to the same path in each target repo.
+For `add` entries, `path` is the file path in the source template repo ([AdobeDocs/dev-docs-template](https://github.com/AdobeDocs/dev-docs-template)). By default the file is written to the same path in the target repo. Use `destPath` to write it to a different path — useful for private repos where workflow files have different names than their public equivalents.
 
-| Field    | Type   | Required           | Description                                                                      |
-| -------- | ------ | ------------------ | -------------------------------------------------------------------------------- |
-| `action` | string | No (default `add`) | `"add"` to create/update a file, `"delete"` to remove it                        |
-| `path`   | string | Yes                | File path in the template repo (for `add`) and in the target repo (for both)     |
+| Field      | Type   | Required           | Description                                                                                      |
+| ---------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------ |
+| `action`   | string | No (default `add`) | `"add"` to create/update a file, `"delete"` to remove it                                        |
+| `path`     | string | Yes                | Source file path in the template repo (for `add`) and target path in the target repo (for both) |
+| `destPath` | string | No                 | Destination path in the target repo. Only valid for `add`. If omitted, defaults to `path`.      |
 
 #### Adding a file
 
@@ -68,6 +69,18 @@ Set `action` to `"add"` (or omit it) and provide `path`. The file is fetched fro
 {
   "action": "add",
   "path": ".github/workflows/lint.yml"
+}
+```
+
+#### Adding a file with a different destination path
+
+Use `destPath` when the file needs to land at a different path in the target repo than it has in the template. This is needed for private repos, where the `-private` workflow variants must be renamed on copy.
+
+```json
+{
+  "action": "add",
+  "path": ".github/workflows/deploy-private.yml",
+  "destPath": ".github/workflows/deploy.yml"
 }
 ```
 
@@ -82,7 +95,7 @@ Set `action` to `"delete"` and provide `path`. If the file does not exist in the
 }
 ```
 
-#### Full example
+#### Full example (private repo workflow cleanup)
 
 ```json
 [
@@ -92,7 +105,30 @@ Set `action` to `"delete"` and provide `path`. If the file does not exist in the
   },
   {
     "action": "delete",
-    "path": "dev.mjs"
+    "path": ".github/workflows/deploy.yml"
+  },
+  {
+    "action": "delete",
+    "path": ".github/workflows/stage.yml"
+  },
+  {
+    "action": "delete",
+    "path": ".github/workflows/build-auto-generated-files.yml"
+  },
+  {
+    "action": "add",
+    "path": ".github/workflows/deploy-private.yml",
+    "destPath": ".github/workflows/deploy.yml"
+  },
+  {
+    "action": "add",
+    "path": ".github/workflows/stage-private.yml",
+    "destPath": ".github/workflows/stage.yml"
+  },
+  {
+    "action": "add",
+    "path": ".github/workflows/build-auto-generated-files-private.yml",
+    "destPath": ".github/workflows/build-auto-generated-files.yml"
   }
 ]
 ```

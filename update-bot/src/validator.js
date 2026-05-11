@@ -35,7 +35,7 @@ export function validateFileMappings(mappings) {
   if (mappings.length === 0) {
     throw new Error("file-mappings.json is empty — add at least one file mapping");
   }
-  const seenPaths = new Set();
+  const seenDestPaths = new Set();
   for (const entry of mappings) {
     const action = entry.action ?? "add";
     if (!VALID_ACTIONS.includes(action)) {
@@ -46,10 +46,19 @@ export function validateFileMappings(mappings) {
     if (!entry.path || typeof entry.path !== "string") {
       throw new Error(`Invalid mapping entry: "path" must be a non-empty string. Got: ${JSON.stringify(entry)}`);
     }
-    if (seenPaths.has(entry.path)) {
-      throw new Error(`Duplicate path in file-mappings.json: ${entry.path}`);
+    if (entry.destPath !== undefined) {
+      if (action === "delete") {
+        throw new Error(`Invalid mapping entry: "destPath" is not allowed on delete entries. Got: ${JSON.stringify(entry)}`);
+      }
+      if (!entry.destPath || typeof entry.destPath !== "string") {
+        throw new Error(`Invalid mapping entry: "destPath" must be a non-empty string if provided. Got: ${JSON.stringify(entry)}`);
+      }
     }
-    seenPaths.add(entry.path);
+    const destPath = entry.destPath ?? entry.path;
+    if (seenDestPaths.has(destPath)) {
+      throw new Error(`Duplicate destination path in file-mappings.json: ${destPath}`);
+    }
+    seenDestPaths.add(destPath);
   }
 }
 

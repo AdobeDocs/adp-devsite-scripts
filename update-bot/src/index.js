@@ -79,36 +79,38 @@ async function processRepo(repoConfig, mappings, templateContents, token) {
 
     for (const mapping of mappings) {
       const action = mapping.action ?? "add";
-      const filePath = mapping.path;
+      const srcPath = mapping.path;
+      const destPath = mapping.destPath ?? srcPath;
 
       if (action === "delete") {
-        const exists = await getContents(owner, repo, filePath, contentRef, token);
+        const exists = await getContents(owner, repo, srcPath, contentRef, token);
         if (!exists) {
-          console.log(`    [delete] ${filePath} — not found, skipping`);
-          warnings.push(`${label}: delete target not found: ${filePath}`);
+          console.log(`    [delete] ${srcPath} — not found, skipping`);
+          warnings.push(`${label}: delete target not found: ${srcPath}`);
           continue;
         }
         treeEntries.push({
-          path: filePath,
+          path: srcPath,
           mode: "100644",
           type: "blob",
           sha: null,
         });
-        console.log(`    [delete] ${filePath}`);
+        console.log(`    [delete] ${srcPath}`);
       } else {
-        const existing = await getContents(owner, repo, filePath, contentRef, token);
+        const existing = await getContents(owner, repo, destPath, contentRef, token);
         if (existing) {
-          overwrittenFiles.push(filePath);
+          overwrittenFiles.push(destPath);
         }
-        const content = templateContents.get(filePath);
+        const content = templateContents.get(srcPath);
         const blob = await createBlob(owner, repo, content, token);
         treeEntries.push({
-          path: filePath,
+          path: destPath,
           mode: "100644",
           type: "blob",
           sha: blob.sha,
         });
-        console.log(`    [${existing ? "overwrite" : "add"}] ${filePath}`);
+        const label2 = mapping.destPath ? `${srcPath} → ${destPath}` : srcPath;
+        console.log(`    [${existing ? "overwrite" : "add"}] ${label2}`);
       }
     }
 
@@ -153,12 +155,12 @@ async function processRepo(repoConfig, mappings, templateContents, token) {
       );
     }
 
-    const newFiles = addedFiles.filter((m) => !overwrittenFiles.includes(m.path));
+    const newFiles = addedFiles.filter((m) => !overwrittenFiles.includes(m.destPath ?? m.path));
     if (newFiles.length > 0) {
       prBodyParts.push(
         "",
         "### New files",
-        newFiles.map((m) => `- \`${m.path}\``).join("\n")
+        newFiles.map((m) => `- \`${m.destPath ?? m.path}\``).join("\n")
       );
     }
 
