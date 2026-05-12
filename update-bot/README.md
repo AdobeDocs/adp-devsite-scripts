@@ -49,6 +49,14 @@ An array of repos the bot will push updates to.
 ]
 ```
 
+> **Tip — generate `repos.json` from a spreadsheet:** Copy the **Repo** column from the *DevDocs Migration* sheet (public repos) or the **Source** column from the *DevDocs Private Repos Migration* sheet (private repos) in the [migration spreadsheet](https://adobe-my.sharepoint.com/:x:/p/pahyde/EYST_p2xpxJKhHe7VJ7_KTIB6D8TC-vqMtt3F3zo9wMIRw?e=UvYFdF), then paste into an AI agent with this prompt:
+>
+> ```
+> Convert these GitHub URLs into a JSON array and write the result to repos.json: [{ "owner": "...", "repo": "..." }]
+>
+> <paste column here>
+> ```
+
 ### `file-mappings.json` — files and their paths
 
 An array of entries that describe files to add or delete in the target repos. Each entry supports two actions: **add** (default) to push a file, and **delete** to remove one.
@@ -75,6 +83,8 @@ Set `action` to `"add"` (or omit it) and provide `path`. The file is fetched fro
 #### Adding a file with a different destination path
 
 Use `destPath` when the file needs to land at a different path in the target repo than it has in the template. This is needed for private repos, where the `-private` workflow variants must be renamed on copy.
+
+> **Tip — public vs. private repos:** Repos under the `AdobeDocs` org are public and use workflow files with the same names as the template, so `destPath` is never needed. Repos under `AdobeDocsPrivate` are private — workflows shared with public repos (e.g., `lint.yml`) are added as-is, but deploy/stage/build workflows have `-private` variants in `dev-docs-template` (e.g., `deploy-private.yml`) that must be installed under the standard names (e.g., `deploy.yml`) — always pair those with `destPath`. This matches how public and private repos are configured in the [New EDS Repo](https://wiki.corp.adobe.com/spaces/AdobeCloudPlatform/pages/3547041099/Converting+and+Onboarding+to+EDS#ConvertingandOnboardingtoEDS--382725667) setup steps.
 
 ```json
 {
@@ -150,3 +160,20 @@ The bot will:
 - Compare the resulting tree with the current branch state. If all files already match the template content, no commit is created and the repo is reported as skipped.
 - Check if an open pull request from `auto-content-update` into `main` already exists. If so, the bot skips PR creation and reports the repo as "PR updated"; otherwise a new PR is opened.
 - Print a summary grouped by PR created, PR updated, skipped, warnings, and failures.
+
+## Fixing PRs
+
+When the bot overwrites repo-specific fields — for example `name`, `repository`, or `scripts` in `package.json` — use the included [Cursor rules](.cursor/rules/) to correct the PRs with an AI coding agent.
+
+Paste the following prompt into Cursor or Claude Code, substituting your actual PR URLs and the files that need fixing:
+
+```
+Read .cursor/rules/pr-fixer.mdc and .cursor/rules/update-bot-pr-policy.mdc, then fix these PRs:
+- AdobeDocs/example-repo: https://github.com/AdobeDocs/example-repo/pull/123
+
+Files to fix:
+- package.json
+- .gitignore
+```
+
+The agent fetches each PR's diff, applies the [fix policy](.cursor/rules/update-bot-pr-policy.mdc) to preserve repo-specific values, and pushes corrected commits to the PR branch.
