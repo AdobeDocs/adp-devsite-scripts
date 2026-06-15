@@ -15,6 +15,9 @@ import {
   updateRef,
   createPullRequest,
   listPullRequests,
+  getPullRequest,
+  getPullRequestFiles,
+  updatePullRequest,
 } from "./github-api.js";
 import {
   validateReposConfig,
@@ -38,6 +41,89 @@ const BASE_REF = "heads/main";
 function loadJson(filePath) {
   const raw = fs.readFileSync(filePath, "utf-8");
   return JSON.parse(raw);
+}
+
+function buildPrBody(newFiles, overwrittenFiles, deletedFiles, ownerRequired) {
+  const parts = [
+    "## Auto Content Update",
+    "",
+    "This PR was created automatically by **update-bot**.",
+  ];
+
+  if (overwrittenFiles.length > 0) {
+    parts.push(
+      "",
+      "### Overwritten files (already existed in repo)",
+      overwrittenFiles.map((f) => `- \`${f}\``).join("\n")
+    );
+  }
+
+  if (newFiles.length > 0) {
+    parts.push(
+      "",
+      "### New files",
+      newFiles.map((f) => `- \`${f}\``).join("\n")
+    );
+  }
+
+  if (deletedFiles.length > 0) {
+    parts.push(
+      "",
+      "### Deleted files",
+      deletedFiles.map((f) => `- \`${f}\``).join("\n")
+    );
+  }
+
+  parts.push("", `_Owner review required: ${ownerRequired ? "Yes" : "No"}_`);
+  return parts.join("\n");
+}
+function buildFallbackBody(ownerRequired) {
+  return [
+    "## Auto Content Update",
+    "",
+    "This PR was created automatically by **update-bot**.",
+    "",
+    `_Owner review required: ${ownerRequired ? "Yes" : "No"}_`,
+  ].join("\n");
+}
+
+const PR_SYNC_MAX_ATTEMPTS = 10;
+const PR_SYNC_DELAY_MS = 2000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// After pushing a new commit to the PR head branch, GitHub recomputes the
+// PR diff asynchronously. GET /pulls/{n}/files can return a stale result
+// (the previous commit's diff) for a short window. Poll until the PR head
+// SHA matches the commit we just pushed so the files we read are current.
+async function waitForPrHead(owner, repo, prNumber, expectedHeadSha, token) {
+  if (!expectedHeadSha) return;
+  for (let attempt = 1; attempt <= PR_SYNC_MAX_ATTEMPTS; attempt++) {
+    const pr = await getPullRequest(owner, repo, prNumber, token);
+    if (pr.head?.sha === expectedHeadSha) return;
+    if (attempt < PR_SYNC_MAX_ATTEMPTS) await sleep(PR_SYNC_DELAY_MS);
+  }
+  console.log(
+    `  Warning: PR head did not reflect ${expectedHeadSha.slice(0, 7)} after ${PR_SYNC_MAX_ATTEMPTS} attempts; proceeding with latest available diff`
+  );
+}
+
+async function syncPrDescription(owner, repo, prNumber, repoConfig, token, expectedHeadSha) {
+  await waitForPrHead(owner, repo, prNumber, expectedHeadSha, token);
+  const files = await getPullRequestFiles(owner, repo, prNumber, token);
+  const newFiles = files
+    .filter((f) => f.status === "added")
+    .map((f) => f.filename);
+  const overwrittenFiles = files
+    .filter((f) => f.status === "modified" || f.status === "renamed" || f.status === "changed")
+    .map((f) => f.filename);
+  const deletedFiles = files
+    .filter((f) => f.status === "removed")
+    .map((f) => f.filename);
+  const ownerRequired = repoConfig.ownerRequired ?? overwrittenFiles.length > 0;
+  const body = buildPrBody(newFiles, overwrittenFiles, deletedFiles, ownerRequired);
+  await updatePullRequest(owner, repo, prNumber, body, token);
+  console.log(`  PR description updated`);
 }
 
 async function processRepo(repoConfig, mappings, templateContents, token) {
@@ -132,63 +218,23 @@ async function processRepo(repoConfig, mappings, templateContents, token) {
 
     if (openPRs.length > 0) {
       const existingPR = openPRs[0];
-      console.log(`  Open PR already exists: ${existingPR.html_url} — skipping PR creation`);
+      console.log(`  Open PR already exists: ${existingPR.html_url} — updating description`);
+      await syncPrDescription(owner, repo, existingPR.number, repoConfig, token, commit.sha);
       return { owner, repo, success: true, prUrl: existingPR.html_url, prExisted: true, warnings };
     }
 
-    const addedFiles = mappings.filter((m) => (m.action ?? "add") === "add");
-    const deletedFiles = mappings.filter((m) => m.action === "delete");
-
     const ownerRequired = repoConfig.ownerRequired ?? overwrittenFiles.length > 0;
-
-    const prBodyParts = [
-      "## Auto Content Update",
-      "",
-      "This PR was created automatically by **update-bot**.",
-    ];
-
-    if (overwrittenFiles.length > 0) {
-      prBodyParts.push(
-        "",
-        "### Overwritten files (already existed in repo)",
-        overwrittenFiles.map((f) => `- \`${f}\``).join("\n")
-      );
-    }
-
-    const newFiles = addedFiles.filter((m) => !overwrittenFiles.includes(m.destPath ?? m.path));
-    if (newFiles.length > 0) {
-      prBodyParts.push(
-        "",
-        "### New files",
-        newFiles.map((m) => `- \`${m.destPath ?? m.path}\``).join("\n")
-      );
-    }
-
-    if (deletedFiles.length > 0) {
-      prBodyParts.push(
-        "",
-        "### Deleted files",
-        deletedFiles.map((m) => `- \`${m.path}\``).join("\n")
-      );
-    }
-
-    prBodyParts.push(
-      "",
-      `_Owner review required: ${ownerRequired ? "Yes" : "No"}_`
-    );
-
-    const prBody = prBodyParts.join("\n");
-
     const pr = await createPullRequest(
       owner,
       repo,
       BRANCH_NAME,
       "main",
       `[update-bot] Content update (${timestamp})`,
-      prBody,
+      buildFallbackBody(ownerRequired),
       token
     );
     console.log(`  PR created: ${pr.html_url}`);
+    await syncPrDescription(owner, repo, pr.number, repoConfig, token, commit.sha);
 
     return { owner, repo, success: true, prUrl: pr.html_url, warnings };
   } catch (err) {

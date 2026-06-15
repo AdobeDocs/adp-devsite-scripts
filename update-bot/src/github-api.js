@@ -196,3 +196,50 @@ export async function listPullRequests(owner, repo, head, base, state, token) {
   }
   return res.json();
 }
+
+// https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
+export async function getPullRequest(owner, repo, pullNumber, token) {
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`GET PR failed: ${res.status} - ${text}`);
+  }
+  return res.json();
+}
+
+// https://docs.github.com/en/rest/pulls/pulls#list-pull-requests-files
+export async function getPullRequestFiles(owner, repo, pullNumber, token) {
+  const files = [];
+  let page = 1;
+  while (true) {
+    const params = new URLSearchParams({ per_page: "100", page: String(page) });
+    const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/pulls/${pullNumber}/files?${params}`, {
+      headers: authHeaders(token),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`GET PR files failed: ${res.status} - ${text}`);
+    }
+    const batch = await res.json();
+    files.push(...batch);
+    if (batch.length < 100) break;
+    page++;
+  }
+  return files;
+}
+
+// https://docs.github.com/en/rest/pulls/pulls#update-a-pull-request
+export async function updatePullRequest(owner, repo, pullNumber, body, token) {
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`PATCH update PR failed: ${res.status} - ${text}`);
+  }
+  return res.json();
+}
