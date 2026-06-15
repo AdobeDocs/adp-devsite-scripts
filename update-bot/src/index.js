@@ -77,6 +77,15 @@ function buildPrBody(newFiles, overwrittenFiles, deletedFiles, ownerRequired) {
   parts.push("", `_Owner review required: ${ownerRequired ? "Yes" : "No"}_`);
   return parts.join("\n");
 }
+function buildFallbackBody(ownerRequired) {
+  return [
+    "## Auto Content Update",
+    "",
+    "This PR was created automatically by **update-bot**.",
+    "",
+    `_Owner review required: ${ownerRequired ? "Yes" : "No"}_`,
+  ].join("\n");
+}
 
 const PR_SYNC_MAX_ATTEMPTS = 10;
 const PR_SYNC_DELAY_MS = 2000;
@@ -214,13 +223,14 @@ async function processRepo(repoConfig, mappings, templateContents, token) {
       return { owner, repo, success: true, prUrl: existingPR.html_url, prExisted: true, warnings };
     }
 
+    const ownerRequired = repoConfig.ownerRequired ?? overwrittenFiles.length > 0;
     const pr = await createPullRequest(
       owner,
       repo,
       BRANCH_NAME,
       "main",
       `[update-bot] Content update (${timestamp})`,
-      "",
+      buildFallbackBody(ownerRequired),
       token
     );
     console.log(`  PR created: ${pr.html_url}`);
