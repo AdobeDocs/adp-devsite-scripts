@@ -133,7 +133,8 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     const processedFile = file.replace('src/pages/', '');
     const theFilePath = `${pathPrefix}/${processedFile}`;
     const deleteUrl = `https://admin.hlx.page/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}${theFilePath}`;
-    const deleteCmd = `curl -XDELETE -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
+    const deleteMethod = operation.includes('cache') ? 'POST' : 'DELETE';
+    const deleteCmd = `curl -X${deleteMethod} -w "HTTP_STATUS:%{http_code}" -vif ${args} ${deleteUrl}`;
 
     const { error: deleteError, execOut: deleteExecOut, execErr: deleteExecErr, httpStatus } = await execWithRetry(deleteCmd);
 
