@@ -21,7 +21,9 @@
  * Options:
  *   --dir <path>       repo to check (default: current directory)
  *   --path-prefix <p>  override the site pathPrefix
- *   --internal-only    check only internal (developer.adobe.com) links
+ *   --env <prod|stage> which devsite to verify links against (default: prod)
+ *   --origin <url>     verify against a custom origin (overrides --env)
+ *   --internal-only    check only internal (devsite) links
  *   --external-only    check only external links
  *   --show-noise       list the hidden external noise results
  */
@@ -29,7 +31,14 @@
 const fs = require('fs');
 const path = require('path');
 
-const ORIGIN = 'https://developer.adobe.com';
+// Which site to verify links against. Repos deployed only to stage should be
+// checked with --env stage; default is prod. Both hosts are treated as
+// "internal" so hardcoded full URLs get verified against the chosen origin.
+const ORIGINS = {
+  prod: 'https://developer.adobe.com',
+  stage: 'https://developer-stage.adobe.com',
+};
+let ORIGIN = ORIGINS.prod; // set from --env / --origin in main()
 
 // ---------------------------------------------------------------------------
 // args
@@ -41,6 +50,8 @@ function parseArgs(argv) {
     showNoise: false,
     internalOnly: false,
     externalOnly: false,
+    env: 'prod',
+    origin: null,
   };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--dir') args.dir = argv[++i];
@@ -48,6 +59,8 @@ function parseArgs(argv) {
     else if (argv[i] === '--show-noise') args.showNoise = true;
     else if (argv[i] === '--internal-only') args.internalOnly = true;
     else if (argv[i] === '--external-only') args.externalOnly = true;
+    else if (argv[i] === '--env') args.env = argv[++i];
+    else if (argv[i] === '--origin') args.origin = argv[++i];
   }
   return args;
 }
@@ -118,8 +131,13 @@ function dirPath(pathPrefix, relPath) {
 }
 
 const TEMPLATE_TOKEN = /[%{}$`]|<[a-z]/i;
+// Both prod and stage devsite hosts count as "internal" regardless of the
+// chosen --env, so a hardcoded full URL to either gets verified against ORIGIN.
 function isExternal(url) {
-  return /^[a-z][a-z0-9+.-]*:/i.test(url) && !/^https?:\/\/(www\.)?developer\.adobe\.com/i.test(url);
+  return (
+    /^[a-z][a-z0-9+.-]*:/i.test(url) &&
+    !/^https?:\/\/(www\.)?developer(-stage)?\.adobe\.com/i.test(url)
+  );
 }
 function isSkippable(url) {
   return (
@@ -166,37 +184,34 @@ function uniq(a) {
   return [...new Set(a.filter(Boolean))];
 }
 
-const MD_LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
-const HTML_HREF = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi;
-// GFM autolinks: <https://…> and bare https://… URLs. The bare form uses a
-// lookbehind to avoid re-matching URLs already inside ](…), href="…", or <…>.
-const ANGLE_URL = /<(https?:\/\/[^>\s]+)>/gi;
-const BARE_URL = /(?<![("'<\]=])(https?:\/\/[^\s<>()[\]"'`]+)/gi;
-
-// Sources whose URL may pick up trailing sentence punctuation ("see https://x.")
-const LINK_SOURCES = [
-  { re: MD_LINK, bare: false },
-  { re: HTML_HREF, bare: false },
-  { re: ANGLE_URL, bare: true },
-  { re: BARE_URL, bare: true },
-];
+// Only real link syntax counts. NOTE: we deliberately do NOT detect bare
+// https://… URLs — the EDS renderer does not autolink bare URLs in prose (a URL
+// written inside a sentence renders as plain text, not a clickable link), so
+// treating them as links produces false positives.
+const MD_LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g; // [text](url)
+const HTML_HREF = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi; // <a href="url">
+const ANGLE_URL = /<(https?:\/\/[^>\s]+)>/gi; // <https://…> explicit autolink
+const LINK_SOURCES = [MD_LINK, HTML_HREF, ANGLE_URL];
 
 const ASSET_EXT = /\.(png|jpe?g|gif|svg|webp|pdf|zip|mp4|json|ico|css|js)(\?|#|$)/i;
+
+// Blank out a region while PRESERVING newlines, so reported line numbers still
+// match the original file (deleting the region would shift every line after it).
+const blankKeepingLines = (s) => s.replace(/[^\n]/g, ' ');
 
 // Returns link records tagged as 'internal' (resolved to developer.adobe.com
 // candidate paths) or 'external' (a full URL on another domain).
 function extractLinks(content, dirKey, pathPrefix) {
   const body = content
-    .replace(/^---\n[\s\S]*?\n---\n/, '') // strip frontmatter
-    .replace(/```[\s\S]*?```/g, '') // strip fenced code blocks (example URLs aren't real links)
-    .replace(/`[^`]*`/g, ''); // strip inline code spans
+    .replace(/^---\n[\s\S]*?\n---\n/, blankKeepingLines) // frontmatter
+    .replace(/```[\s\S]*?```/g, blankKeepingLines) // fenced code blocks
+    .replace(/`[^`]*`/g, blankKeepingLines); // inline code spans
   const results = [];
   const seen = new Set();
-  for (const { re, bare } of LINK_SOURCES) {
+  for (const re of LINK_SOURCES) {
     let m;
     while ((m = re.exec(body)) !== null) {
-      let raw = m[1];
-      if (bare) raw = raw.replace(/[.,;:!?]+$/, ''); // drop trailing sentence punctuation
+      const raw = m[1];
       const line = body.slice(0, m.index).split('\n').length;
       if (isSkippable(raw)) continue;
 
@@ -389,10 +404,20 @@ async function fetchManifest() {
 async function main() {
   const args = parseArgs(process.argv);
   const repoDir = args.dir;
+
+  // Resolve which site to check against: --origin wins, else --env (prod|stage).
+  if (args.origin) ORIGIN = args.origin.replace(/\/$/, '');
+  else if (ORIGINS[args.env]) ORIGIN = ORIGINS[args.env];
+  else {
+    console.error(`Unknown --env "${args.env}". Use "prod" or "stage" (or --origin <url>).`);
+    process.exit(1);
+  }
+
   const pathPrefix =
     args.pathPrefix != null ? args.pathPrefix.replace(/\/$/, '') : readPathPrefix(repoDir);
 
   console.log(`\n🔗 Checking links in ${path.resolve(repoDir)}`);
+  console.log(`   against: ${ORIGIN}`);
   console.log(`   pathPrefix: ${pathPrefix || '(site root)'}\n`);
 
   // Pre-flight: is this site actually deployed? If the root 404s, every link
@@ -511,7 +536,30 @@ async function main() {
   if (found) process.exitCode = 1; // non-zero so it can gate a script/CI if desired
 }
 
-main().catch((err) => {
-  console.error('\n💥', err.message);
-  process.exit(1);
-});
+// Point verification at prod, stage, or a custom origin. Used by sweep.js so the
+// multi-repo sweep reuses this file's exact checking logic.
+function setOrigin(envOrUrl) {
+  if (/^https?:\/\//i.test(envOrUrl)) ORIGIN = envOrUrl.replace(/\/$/, '');
+  else if (ORIGINS[envOrUrl]) ORIGIN = ORIGINS[envOrUrl];
+  else throw new Error(`unknown env "${envOrUrl}" (use prod|stage or a full URL)`);
+  return ORIGIN;
+}
+
+// Run as a script → check one repo. Require as a module → reuse the primitives.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('\n💥', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  ORIGINS,
+  setOrigin,
+  fetchManifest,
+  extractLinks,
+  dirPath,
+  isAlive,
+  externalResult,
+  toKey,
+};
