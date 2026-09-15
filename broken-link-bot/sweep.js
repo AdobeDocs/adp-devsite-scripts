@@ -46,6 +46,7 @@ function parseArgs(argv) {
     batchDelay: 120,
     out: null,
     external: false, // internal cross-repo links only by default (fast, focused)
+    file: false, // when true, create/update a GitHub issue per broken repo
   };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--env') a.env = argv[++i];
@@ -56,8 +57,78 @@ function parseArgs(argv) {
     else if (argv[i] === '--batch-delay') a.batchDelay = parseInt(argv[++i], 10);
     else if (argv[i] === '--out') a.out = argv[++i];
     else if (argv[i] === '--external') a.external = true; // also check external links
+    else if (argv[i] === '--file') a.file = true; // actually create/update GitHub issues
   }
   return a;
+}
+
+// ---------------------------------------------------------------------------
+// GitHub issue filing (only when --file). One deduped issue per repo.
+// ---------------------------------------------------------------------------
+const ISSUE_TITLE = (repo) => `🔗 Broken links found on developer.adobe.com (${repo})`;
+const ISSUE_MARKER = '<!-- adp-link-health -->';
+
+async function getCodeowners(owner, repo, token) {
+  for (const p of ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']) {
+    const r = await fetch(`${API}/repos/${owner}/${repo}/contents/${p}`, { headers: authHeaders(token) });
+    if (r.ok) {
+      const j = await r.json();
+      const text = Buffer.from(j.content || '', 'base64').toString('utf8');
+      // Collect every @owner / @org/team token mentioned in the file.
+      const owners = [...new Set(text.match(/@[A-Za-z0-9/_-]+/g) || [])];
+      if (owners.length) return owners;
+    }
+  }
+  return [];
+}
+
+const MAX_ROWS = 50; // keep issues readable and under GitHub's body-size limit
+function issueBody(pathPrefix, env, findings, owners) {
+  const shown = findings.slice(0, MAX_ROWS);
+  const rows = shown
+    .map((f) => `| \`${f.file}:${f.line}\` | ${f.type} | ${f.raw} |`)
+    .join('\n');
+  const more = findings.length > MAX_ROWS ? `\n\n_…and ${findings.length - MAX_ROWS} more._` : '';
+  const mention = owners.length ? `\n${owners.join(' ')} — flagging for your team.\n` : '';
+  return `${ISSUE_MARKER}
+Automated link-health check for pages published under **\`${pathPrefix}\`** (checked against **${env}**).
+**${findings.length}** link(s) in this repo's \`src/pages\` currently return a 404.
+${mention}
+| Source (file:line) | Type | Broken link |
+|---|---|---|
+${rows}${more}
+
+_Filed by \`adp-devsite-scripts/broken-link-bot\`. This issue updates on each run and closes automatically when all links resolve._`;
+}
+
+async function findExistingIssue(owner, repo, token) {
+  const r = await fetch(`${API}/repos/${owner}/${repo}/issues?state=open&per_page=100`, { headers: authHeaders(token) });
+  if (!r.ok) return null;
+  const issues = await r.json();
+  return issues.find((i) => i.title === ISSUE_TITLE(repo) && (i.body || '').includes(ISSUE_MARKER)) || null;
+}
+
+async function fileIssue(site, env, findings, token) {
+  const { owner, repo, pathPrefix } = site;
+  const owners = await getCodeowners(owner, repo, token);
+  const body = issueBody(pathPrefix || '/', env, findings, owners);
+  const existing = await findExistingIssue(owner, repo, token);
+  if (existing) {
+    const r = await fetch(`${API}/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      headers: authHeaders(token),
+      body: JSON.stringify({ body }),
+    });
+    if (!r.ok) throw new Error(`update issue -> HTTP ${r.status}`);
+    return { url: existing.html_url, action: 'updated', owners };
+  }
+  const r = await fetch(`${API}/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ title: ISSUE_TITLE(repo), body }),
+  });
+  if (!r.ok) throw new Error(`create issue -> HTTP ${r.status}`);
+  return { url: (await r.json()).html_url, action: 'created', owners };
 }
 
 // Run async fn over items with bounded concurrency. Per-host throttling still
@@ -89,8 +160,10 @@ async function fetchRegistry(env) {
   const res = await fetch(DEVSITE_PATHS[env], { headers: { 'User-Agent': UA } });
   if (!res.ok) throw new Error(`registry -> HTTP ${res.status}`);
   const json = await res.json();
+  // SKIP_OWNERS are dropped here (they can't be fetched from GitHub anyway).
+  // SKIP_REPOS is applied later in main() so an explicit --repos can override it.
   return (json.data || [])
-    .filter((e) => e.repo && e.owner && !SKIP_OWNERS.has(e.owner) && !SKIP_REPOS.has(e.repo))
+    .filter((e) => e.repo && e.owner && !SKIP_OWNERS.has(e.owner))
     .map((e) => ({
       owner: e.owner,
       repo: e.repo,
@@ -99,11 +172,14 @@ async function fetchRegistry(env) {
     }));
 }
 
-// Always the repo's default branch (registry branch pointers are stale post-migration).
-async function defaultBranch(owner, repo, token) {
+// One repo lookup → default branch (registry branch pointers are stale) + the
+// archived flag. Archived repos are read-only (can't file issues) and usually
+// deprecated, so the sweep skips them.
+async function repoInfo(owner, repo, token) {
   const res = await fetch(`${API}/repos/${owner}/${repo}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(`repo lookup -> HTTP ${res.status}`);
-  return (await res.json()).default_branch || 'main';
+  const j = await res.json();
+  return { branch: j.default_branch || 'main', archived: !!j.archived };
 }
 
 async function listMarkdown(owner, repo, branch, token) {
@@ -133,7 +209,13 @@ async function main() {
 
   console.log('• Loading registry…');
   let sites = await fetchRegistry(args.env);
-  if (args.repos) sites = sites.filter((s) => args.repos.includes(s.repo));
+  if (args.repos) {
+    // Explicit repo selection overrides the skip list (lets you target a repo
+    // like adp-devsite-github-actions-test on purpose).
+    sites = sites.filter((s) => args.repos.includes(s.repo));
+  } else {
+    sites = sites.filter((s) => !SKIP_REPOS.has(s.repo));
+  }
   if (args.start > 1) sites = sites.slice(args.start - 1); // begin at the Nth entry
   if (args.limit) sites = sites.slice(0, args.limit);
   console.log(`  ${sites.length} site(s)${args.start > 1 ? ` (starting at #${args.start})` : ''}`);
@@ -143,6 +225,7 @@ async function main() {
   console.log(`  ${manifest ? manifest.size : 0} live URLs\n`);
 
   const byRepo = {}; // "owner/repo" -> [ findings ]
+  const siteByLabel = {}; // "owner/repo" -> site (for issue filing)
   const notDeployed = [];
   const errored = [];
   const batchSize = Math.max(1, args.batchSize);
@@ -155,7 +238,10 @@ async function main() {
     for (const site of batch) {
       const label = `${site.owner}/${site.repo}`;
       try {
-        const branch = await defaultBranch(site.owner, site.repo, token);
+        const { branch, archived } = await repoInfo(site.owner, site.repo, token);
+        // Archived repos are read-only (can't file issues) and usually
+        // deprecated — skip silently.
+        if (archived) continue;
         const files = (await listMarkdown(site.owner, site.repo, branch, token)).filter(
           (f) => !/(^|\/)config\.md$/i.test(f),
         );
@@ -216,7 +302,10 @@ async function main() {
         }
 
         console.log(`  • ${label} (${files.length} md) → ${findings.length} broken`);
-        if (findings.length) byRepo[label] = findings;
+        if (findings.length) {
+          byRepo[label] = findings;
+          siteByLabel[label] = site;
+        }
       } catch (err) {
         console.log(`  ✗ ${label}: ${err.message}`);
         errored.push({ label, error: err.message });
@@ -247,6 +336,23 @@ async function main() {
       JSON.stringify({ generatedAt: new Date().toISOString(), env: args.env, byRepo, notDeployed, errored }, null, 2),
     );
     console.log(`\nSaved results → ${args.out}`);
+  }
+
+  // File/update one GitHub issue per broken repo (only with --file).
+  if (args.file) {
+    if (!token) {
+      console.error('\n✗ --file needs GITHUB_TOKEN (issues: write).');
+      return;
+    }
+    console.log(`\n• Filing issues for ${Object.keys(byRepo).length} repo(s)…`);
+    for (const [label, findings] of Object.entries(byRepo)) {
+      try {
+        const r = await fileIssue(siteByLabel[label], args.env, findings, token);
+        console.log(`  ${r.action}: ${r.url}${r.owners.length ? `  (mentioned ${r.owners.join(' ')})` : '  (no CODEOWNERS)'}`);
+      } catch (err) {
+        console.error(`  ✗ ${label}: ${err.message}`);
+      }
+    }
   }
 }
 

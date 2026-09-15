@@ -139,6 +139,22 @@ function isExternal(url) {
     !/^https?:\/\/(www\.)?developer(-stage)?\.adobe\.com/i.test(url)
   );
 }
+// RFC-2606/6761 reserved names — defined as non-real, so never worth checking.
+function isReservedHost(url) {
+  let h;
+  try {
+    h = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false; // relative link -> not a reserved host
+  }
+  return (
+    /(^|\.)example\.(com|org|net|edu)$/.test(h) ||
+    h.endsWith('.example') ||
+    h === 'localhost' ||
+    h === '127.0.0.1'
+  );
+}
+
 function isSkippable(url) {
   return (
     !url ||
@@ -147,7 +163,8 @@ function isSkippable(url) {
     url.startsWith('tel:') ||
     url.startsWith('data:') ||
     url.startsWith('javascript:') ||
-    TEMPLATE_TOKEN.test(url)
+    TEMPLATE_TOKEN.test(url) ||
+    isReservedHost(url)
   );
 }
 
@@ -188,7 +205,12 @@ function uniq(a) {
 // https://… URLs — the EDS renderer does not autolink bare URLs in prose (a URL
 // written inside a sentence renders as plain text, not a clickable link), so
 // treating them as links produces false positives.
-const MD_LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g; // [text](url)
+// [text](url) — the URL may contain balanced parens, e.g. a Wikipedia link like
+// .../SOLID_(object-oriented_design). Each step matches a SINGLE non-paren char
+// OR a whole balanced (...) group. Note the single-char alternative (not [..]+):
+// a nested quantifier here — (?:[^()\s>]+|\(...\))+ — backtracks catastrophically
+// (ReDoS) on some content, so it must stay a single char to keep matching linear.
+const MD_LINK = /\]\(\s*<?((?:[^()\s>]|\([^()]*\))+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
 const HTML_HREF = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi; // <a href="url">
 const ANGLE_URL = /<(https?:\/\/[^>\s]+)>/gi; // <https://…> explicit autolink
 const LINK_SOURCES = [MD_LINK, HTML_HREF, ANGLE_URL];
@@ -313,22 +335,40 @@ async function statusFor(url, method, timeoutMs = 15000) {
       await sleep(wait);
       res = await rawFetch(url, method, timeoutMs);
     }
-    return res.status;
+    return { status: res.status, finalUrl: res.url }; // finalUrl = where redirects landed
   } finally {
     releaseHost(host);
   }
 }
 
+const toggleSlash = (u) => (u.endsWith('/') ? u.slice(0, -1) : `${u}/`);
+
 const CONFIRM_DELAY_MS = 1500; // pause before re-checking a link that looks dead
+
+// HEAD first (cheap), but fall back to GET whenever HEAD isn't clearly alive.
+// Many servers mishandle HEAD (nuget.org returns 404, others 403/405) while GET
+// works — GET is what a browser does, so it's authoritative.
+async function probe(url, timeoutMs = 15000) {
+  let r = await statusFor(url, 'HEAD', timeoutMs);
+  if (!(r.status >= 200 && r.status < 400)) r = await statusFor(url, 'GET', timeoutMs);
+  return r;
+}
+
+const ok = (s) => s >= 200 && s < 400;
 
 async function isAliveOnce(key) {
   const forms = key === '/' ? ['/'] : [`${key}/`, key];
   for (const form of forms) {
     const url = `${ORIGIN}${form}`;
     try {
-      let status = await statusFor(url, 'HEAD');
-      if (status === 405 || status === 501) status = await statusFor(url, 'GET');
-      if (status >= 200 && status < 400) return true;
+      const { status, finalUrl } = await probe(url);
+      if (ok(status)) return true;
+      // A redirect can land on a URL whose trailing slash 404s while the other
+      // form is live (e.g. /a/b/ 301→ /c/d/ [404] but /c/d [200]). If we followed
+      // a redirect to a 404, retry the destination with the slash toggled.
+      if (status === 404 && finalUrl && finalUrl !== url) {
+        if (ok((await probe(toggleSlash(finalUrl))).status)) return true;
+      }
     } catch {
       return true; // transient/network error -> don't report as broken
     }
@@ -358,9 +398,14 @@ async function isAlive(key) {
 const EXT_TIMEOUT = 8000;
 async function externalResultOnce(url) {
   try {
-    let status = await statusFor(url, 'HEAD', EXT_TIMEOUT);
-    if (status === 405 || status === 501) status = await statusFor(url, 'GET', EXT_TIMEOUT);
-    if (status >= 200 && status < 400) return 'alive';
+    const { status, finalUrl } = await probe(url, EXT_TIMEOUT);
+    if (ok(status)) return 'alive';
+    // Same redirect-trailing-slash rescue as internal: a short-link (e.g.
+    // adobe.com/go/…) can 301 to a URL whose trailing slash 404s while the
+    // other form is live. If a followed redirect 404s, retry with slash toggled.
+    if (status === 404 && finalUrl && finalUrl !== url) {
+      if (ok((await probe(toggleSlash(finalUrl), EXT_TIMEOUT)).status)) return 'alive';
+    }
     if (status === 404 || status === 410) return 'broken';
     return 'noise';
   } catch {
