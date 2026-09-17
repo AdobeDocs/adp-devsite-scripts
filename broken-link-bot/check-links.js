@@ -131,6 +131,10 @@ function dirPath(pathPrefix, relPath) {
 }
 
 const TEMPLATE_TOKEN = /[%{}$`]|<[a-z]/i;
+// A bare email address used as a link target (e.g. [contact](engcom@adobe.com))
+// — no scheme, so it isn't caught by the mailto: check but also isn't a real
+// internal path. local@domain.tld with no slashes.
+const BARE_EMAIL = /^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/;
 // Both prod and stage devsite hosts count as "internal" regardless of the
 // chosen --env, so a hardcoded full URL to either gets verified against ORIGIN.
 function isExternal(url) {
@@ -164,6 +168,7 @@ function isSkippable(url) {
     url.startsWith('data:') ||
     url.startsWith('javascript:') ||
     TEMPLATE_TOKEN.test(url) ||
+    BARE_EMAIL.test(url) ||
     isReservedHost(url)
   );
 }
@@ -210,7 +215,10 @@ function uniq(a) {
 // OR a whole balanced (...) group. Note the single-char alternative (not [..]+):
 // a nested quantifier here — (?:[^()\s>]+|\(...\))+ — backtracks catastrophically
 // (ReDoS) on some content, so it must stay a single char to keep matching linear.
-const MD_LINK = /\]\(\s*<?((?:[^()\s>]|\([^()]*\))+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
+// The (?<!\\) guards against an ESCAPED bracket: markdown like
+// `representations\[*\](type=application/vnd.adobe.color+json)` is a JSONPath in
+// prose, not a link — a real link's closing `]` is never backslash-escaped.
+const MD_LINK = /(?<!\\)\]\(\s*<?((?:[^()\s>]|\([^()]*\))+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
 const HTML_HREF = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi; // <a href="url">
 const ANGLE_URL = /<(https?:\/\/[^>\s]+)>/gi; // <https://…> explicit autolink
 const LINK_SOURCES = [MD_LINK, HTML_HREF, ANGLE_URL];
@@ -268,8 +276,19 @@ function extractLinks(content, dirKey, pathPrefix) {
 // independently, and we honor a 429's Retry-After before one retry. This keeps us
 // a good citizen against developer.adobe.com and any busy external domain.
 // ---------------------------------------------------------------------------
-const PER_HOST = 4; // max concurrent requests to any single host
-const MAX_RETRY_AFTER_MS = 5000; // cap how long we'll wait on a 429
+const PER_HOST = 4; // max concurrent requests to any single host (default)
+// Some hosts rate-limit bots aggressively and return 429 for a live/dead page
+// alike; hitting them one-at-a-time keeps their status STABLE run-to-run (a link
+// that flaps 429↔404 otherwise looks "newly broken" and re-nags). github is the
+// big one (blob/tree link checks).
+const PER_HOST_OVERRIDE = new Map([
+  ['github.com', 1],
+  ['raw.githubusercontent.com', 1],
+  ['api.github.com', 1],
+]);
+const perHostLimit = (host) => PER_HOST_OVERRIDE.get(host) ?? PER_HOST;
+const MAX_RETRY_AFTER_MS = 5000; // cap how long we'll wait on a single 429 backoff
+const MAX_429_RETRIES = 3; // retry a 429 a few times (backoff) so it resolves to its true status
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const hostOf = (url) => {
@@ -287,7 +306,7 @@ async function acquireHost(host) {
     s = { count: 0, waiters: [] };
     hostSem.set(host, s);
   }
-  if (s.count < PER_HOST) {
+  if (s.count < perHostLimit(host)) {
     s.count++;
     return;
   }
@@ -330,8 +349,10 @@ async function statusFor(url, method, timeoutMs = 15000) {
   await acquireHost(host);
   try {
     let res = await rawFetch(url, method, timeoutMs);
-    if (res.status === 429) {
-      const wait = Math.min(parseRetryAfter(res.headers.get('retry-after')) ?? 1000, MAX_RETRY_AFTER_MS);
+    // Retry a 429 a few times with exponential backoff (honoring Retry-After) so a
+    // rate-limited link resolves to its real status instead of being written off.
+    for (let attempt = 0; res.status === 429 && attempt < MAX_429_RETRIES; attempt++) {
+      const wait = Math.min(parseRetryAfter(res.headers.get('retry-after')) ?? 1000 * 2 ** attempt, MAX_RETRY_AFTER_MS);
       await sleep(wait);
       res = await rawFetch(url, method, timeoutMs);
     }
@@ -396,6 +417,31 @@ async function isAlive(key) {
 // 'broken'), which is hidden anyway — so retrying just to re-confirm noise would
 // waste time. A short timeout keeps a few slow/dead hosts from dominating.
 const EXT_TIMEOUT = 8000;
+
+// Text a real not-found page shows. A single-page app that soft-404s a deep link
+// (returns a 404 status but ships the JS app shell, which then client-renders the
+// page) has NONE of this — the "not found" only appears later if the route is
+// truly invalid, which we can't see over HTTP.
+const NOT_FOUND_TEXT =
+  /page not found|not be found|couldn['’]t (?:be )?find|cannot be found|can['’]t be found|doesn['’]t exist|no longer (?:exists|available)|404 error|error 404|>\s*404\s*</i;
+
+// SPA soft-404: a 404 status whose body is an HTML app shell (loads a JS bundle)
+// with no not-found text — e.g. v5.reactrouter.com/web/api/Link. Such a URL
+// renders fine in a browser but is indistinguishable over HTTP from a real 404
+// on the same host, so we hide it (as noise) rather than report a false "broken".
+// Only called on an already-404 link, so the extra GET is rare.
+async function looksLikeSpaSoft404(url) {
+  try {
+    const res = await rawFetch(url, 'GET', EXT_TIMEOUT);
+    if (!/text\/html/i.test(res.headers.get('content-type') || '')) return false;
+    const body = await res.text();
+    if (!/<script\b[^>]*\bsrc=/i.test(body)) return false; // no JS app -> not a shell
+    return !NOT_FOUND_TEXT.test(body); // explicit "not found" -> real 404, keep it
+  } catch {
+    return false;
+  }
+}
+
 async function externalResultOnce(url) {
   try {
     const { status, finalUrl } = await probe(url, EXT_TIMEOUT);
@@ -406,7 +452,11 @@ async function externalResultOnce(url) {
     if (status === 404 && finalUrl && finalUrl !== url) {
       if (ok((await probe(toggleSlash(finalUrl), EXT_TIMEOUT)).status)) return 'alive';
     }
-    if (status === 404 || status === 410) return 'broken';
+    if (status === 404 || status === 410) {
+      // Don't flag a single-page-app soft-404 (renders client-side) as broken.
+      if (await looksLikeSpaSoft404(finalUrl || url)) return 'noise';
+      return 'broken';
+    }
     return 'noise';
   } catch {
     return 'noise'; // timeout / network error -> not broken
@@ -441,6 +491,106 @@ async function fetchManifest() {
   } catch {
     return null; // no manifest -> fall back to verifying every link live
   }
+}
+
+// ---------------------------------------------------------------------------
+// curated redirects (redirects.json) — mirrors the site's own resolution
+//
+// A path can 404 at every server layer (Fastly's redirect table, the EDS origin)
+// yet still resolve for real users: the 404 page's redirect() (in lib-adobeio.js)
+// looks the path up in the owning repo's <pathPrefix>/redirects.json and
+// client-redirects to the Destination. That client-side read is a permanent site
+// feature, so a link it resolves is genuinely reachable — not broken. We
+// replicate that exact lookup here (match pathPrefix via devsitepaths, then the
+// repo's redirects.json), and only count it as resolved if the Destination itself
+// is live.
+// ---------------------------------------------------------------------------
+let devsitePathsPromise; // fetched once per run
+function getDevsitePaths() {
+  if (!devsitePathsPromise) {
+    devsitePathsPromise = (async () => {
+      try {
+        const res = await rawFetch(`${ORIGIN}/franklin_assets/devsitepaths.json`, 'GET', 20000);
+        if (!res.ok) return null;
+        const j = await res.json();
+        return (j && j.data) || null;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return devsitePathsPromise;
+}
+
+const redirectsCache = new Map(); // pathPrefix -> Promise<Map<Source,Destination>|null>
+function getRedirects(pathPrefix) {
+  if (!redirectsCache.has(pathPrefix)) {
+    redirectsCache.set(
+      pathPrefix,
+      (async () => {
+        try {
+          const res = await rawFetch(`${ORIGIN}${pathPrefix}/redirects.json`, 'GET', 15000);
+          if (!res.ok) return null;
+          const j = await res.json();
+          const rows = (j && j.data) || [];
+          const m = new Map();
+          for (const r of rows) if (r && r.Source) m.set(r.Source, r.Destination);
+          return m.size ? m : null;
+        } catch {
+          return null;
+        }
+      })(),
+    );
+  }
+  return redirectsCache.get(pathPrefix);
+}
+
+// Same level-3 → level-2 → level-1 pathPrefix match the site's redirect() uses.
+function matchDevsitePrefix(key, paths) {
+  const s = key.split('/'); // ['', seg1, seg2, ...]
+  const tries = [];
+  if (s.length > 3) tries.push(`/${s[1]}/${s[2]}/${s[3]}`);
+  if (s.length > 2) tries.push(`/${s[1]}/${s[2]}`);
+  if (s.length > 1) tries.push(`/${s[1]}`);
+  for (const p of tries) if (paths.some((e) => e.pathPrefix === p)) return p;
+  return null;
+}
+
+// If `key` is a redirects.json Source whose Destination resolves, return the
+// Destination; else null. Matches the site: exact Source match on the path,
+// trying both slash forms (redirects.json lists both). Verifies the Destination.
+async function redirectResolve(key) {
+  const paths = await getDevsitePaths();
+  if (!paths) return null;
+  const prefix = matchDevsitePrefix(key, paths);
+  if (!prefix) return null;
+  const map = await getRedirects(prefix);
+  if (!map) return null;
+  const dest = map.get(key) || map.get(`${key}/`);
+  if (!dest) return null;
+  const destKey = toKey(dest);
+  if (destKey && (await isAliveOnce(destKey))) return dest;
+  return null; // redirect points at something that also 404s -> still broken
+}
+
+// Three-state classification for an internal path:
+//   'alive'      -> reachable now (200, server redirect, or slash-sibling)
+//   'redirected' -> 404, but rescued by curated redirects.json (Destination live)
+//   'broken'     -> 404 and nothing rescues it
+// Slash-toggle rescue already lives in isAliveOnce, so it lands in 'alive'
+// (a permanent EDS fallback, not a page move) — redirects.json is checked only
+// once the path itself is gone, matching the site's precedence.
+async function classifyInternalOnce(key) {
+  if (await isAliveOnce(key)) return { state: 'alive' };
+  const dest = await redirectResolve(key);
+  if (dest) return { state: 'redirected', destination: dest };
+  return { state: 'broken' };
+}
+async function classifyInternal(key) {
+  const r = await classifyInternalOnce(key);
+  if (r.state !== 'broken') return r; // only re-confirm a "broken" verdict
+  await sleep(CONFIRM_DELAY_MS);
+  return classifyInternalOnce(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -513,12 +663,12 @@ async function main() {
   // Pre-filter internal links against the sitemap: anything listed there is
   // live, so we skip the network for it and only verify the misses.
   const manifest = await fetchManifest();
-  const aliveInternal = new Map();
+  const internalState = new Map(); // key -> { state, destination? }
   let internalToVerify = [...uniqueTargets];
   if (manifest) {
     internalToVerify = [];
     for (const key of uniqueTargets) {
-      if (manifest.has(key)) aliveInternal.set(key, true);
+      if (manifest.has(key)) internalState.set(key, { state: 'alive' });
       else internalToVerify.push(key);
     }
   }
@@ -528,12 +678,27 @@ async function main() {
     `   ${uniqueTargets.size} internal (${manifest ? uniqueTargets.size - internalToVerify.length : 0} via sitemap, ${internalToVerify.length} live) ` +
       `+ ${uniqueExtUrls.size} external… `,
   );
-  await runPool(internalToVerify, async (key) => aliveInternal.set(key, await isAlive(key)));
+  await runPool(internalToVerify, async (key) => internalState.set(key, await classifyInternal(key)));
   await runPool([...uniqueExtUrls], async (url) => extStatus.set(url, await externalResult(url)));
   console.log('done\n');
 
-  // Internal: broken only if EVERY candidate form is dead.
-  const brokenInternal = internal.filter((c) => c.targets.every((t) => aliveInternal.get(t) === false));
+  // Internal per-link verdict from its candidate targets, mirroring the site:
+  //   alive if ANY candidate is reachable; else redirected if ANY candidate is
+  //   rescued by redirects.json; else broken (all candidates dead).
+  const stateOf = (t) => internalState.get(t) || { state: 'broken' };
+  function linkVerdict(c) {
+    const states = c.targets.map(stateOf);
+    if (states.some((s) => s.state === 'alive')) return { state: 'alive' };
+    const red = states.find((s) => s.state === 'redirected');
+    if (red) return { state: 'redirected', destination: red.destination };
+    return { state: 'broken' };
+  }
+  const brokenInternal = internal.filter((c) => linkVerdict(c).state === 'broken');
+  // Not broken, but resolves only through a curated redirects.json redirect.
+  const redirectedInternal = internal
+    .map((c) => ({ c, v: linkVerdict(c) }))
+    .filter((x) => x.v.state === 'redirected')
+    .map((x) => ({ ...x.c, destination: x.v.destination }));
   // External: broken = 404/410; noise = blocked/flaky (hidden unless --show-noise).
   const brokenExternal = external.filter((c) => extStatus.get(c.url) === 'broken');
   const noiseExternal = external.filter((c) => extStatus.get(c.url) === 'noise');
@@ -550,6 +715,19 @@ async function main() {
         console.log(`   ${b.file}:${b.line}`);
         console.log(`     link:  ${b.raw}`);
         console.log(`     404:   ${ORIGIN}${b.targets[0]}\n`);
+      }
+    }
+    // Not broken, but only reachable via a curated redirects.json redirect.
+    // Informational (doesn't fail the run): the link works, but points at an old
+    // URL — cleaner to update it to the destination.
+    if (redirectedInternal.length) {
+      console.log(
+        `\nℹ️  Internal links: ${redirectedInternal.length} resolve via a redirect (redirects.json)`,
+      );
+      for (const r of redirectedInternal) {
+        console.log(`   ${r.file}:${r.line}`);
+        console.log(`     link: ${r.raw}`);
+        console.log(`     →     ${r.destination}\n`);
       }
     }
   }
@@ -605,6 +783,8 @@ module.exports = {
   extractLinks,
   dirPath,
   isAlive,
+  classifyInternal, // three-state: alive | redirected (redirects.json) | broken
+  redirectResolve,
   externalResult,
   toKey,
 };
