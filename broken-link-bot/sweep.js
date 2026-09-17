@@ -191,8 +191,10 @@ function issueBody(pathPrefix, env, show, owners, storedKeys, dismissed = [], me
   const shown = show.slice(0, MAX_ROWS);
   // Source cell links to the exact line in the repo's own file (blob/HEAD =
   // default branch) so the owner can click through to the broken link.
+  // `?plain=1` is required: GitHub renders .md files by default (no line
+  // anchors), so #L<line> only jumps in the raw source view that ?plain=1 forces.
   const srcCell = (f) =>
-    blobBase ? `[\`${f.file}:${f.line}\`](${blobBase}/${f.file}#L${f.line})` : `\`${f.file}:${f.line}\``;
+    blobBase ? `[\`${f.file}:${f.line}\`](${blobBase}/${f.file}?plain=1#L${f.line})` : `\`${f.file}:${f.line}\``;
   const rows = shown
     .map((f) => `| ${srcCell(f)} | ${f.type} | ${f.raw} |`)
     .join('\n');
