@@ -1,0 +1,100 @@
+name: Link health sweep
+
+# Runs the broken-link sweep across the content repos and files/updates one
+# deduped GitHub issue per repo. Cross-repo issue writes require an org-wide
+# token, so this uses the LINK_HEALTH_TOKEN secret (a fine-grained PAT with
+# Issues: read/write + Contents: read on AdobeDocs) — NOT the built-in
+# GITHUB_TOKEN, which is scoped only to this repo.
+
+on:
+  schedule:
+    # Every Tuesday 09:17 UTC; the "biweekly gate" step below drops it to every
+    # OTHER Tuesday. :17 (not :00) avoids GitHub's top-of-the-hour scheduler
+    # congestion, which can delay on-the-hour jobs by 10-30+ minutes.
+    - cron: '17 9 * * 2'
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Devsite to check links against
+        type: choice
+        options: [prod, stage]
+        default: prod
+      repos:
+        description: 'Limit to these repos (comma-separated names; blank = all)'
+        type: string
+        default: ''
+      file:
+        description: 'File/update GitHub issues (leave unchecked for a dry-run)'
+        type: boolean
+        default: false
+
+# The workflow only reads its own code here; all cross-repo API calls use the
+# PAT below, so the default token needs nothing beyond read.
+permissions:
+  contents: read
+
+# Never let two sweeps run at once — they would double-file and fight over the
+# same issues.
+concurrency:
+  group: link-health-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Biweekly gate
+        id: gate
+        run: |
+          # Manual runs always proceed; only the cron is throttled to fortnightly.
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Run only on even weeks-since-epoch => every other Tuesday.
+          if [ $(( $(date -u +%s) / 604800 % 2 )) -eq 0 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Odd week — skipping this Tuesday (biweekly cadence)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run sweep
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.LINK_HEALTH_TOKEN }}
+          SWEEP_ENV: ${{ github.event.inputs.env || 'prod' }}
+          SWEEP_REPOS: ${{ github.event.inputs.repos || '' }}
+          # Scheduled runs always file; manual runs file only if the box is checked.
+          SWEEP_FILE: ${{ github.event_name == 'schedule' && 'true' || github.event.inputs.file }}
+        run: |
+          set -euo pipefail
+          OUT="link-health-$(date -u +%Y%m%d-%H%M%S).json"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          args=(--env "$SWEEP_ENV" --external --out "$OUT")
+          # NOTE: don't use `[ cond ] && cmd` here — under `set -e` a false test
+          # would abort the step. Use explicit ifs.
+          if [ "$SWEEP_FILE" = "true" ]; then args+=(--file); fi
+          if [ -n "$SWEEP_REPOS" ]; then args+=(--repos "$SWEEP_REPOS"); fi
+          echo "Running: node broken-link-bot/sweep.js ${args[*]}"
+          node broken-link-bot/sweep.js "${args[@]}"
+
+      - name: Upload results JSON
+        if: always() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-health-results
+          path: ${{ env.OUT }}
+          if-no-files-found: warn
+          retention-days: 90
