@@ -1,0 +1,5 @@
+node_modules/
+*-results.json
+full-sweep*.json
+*.log
+sweep*-log.txt
