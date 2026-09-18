@@ -126,6 +126,27 @@ function decideIssueAction(existing, findings) {
   };
 }
 
+// Parse CODEOWNERS into the @-mention handles it declares. We must PARSE, not
+// regex-scrape: CODEOWNERS allows email owners (docs@adobe.com), and a naive
+// /@\w+/ match would pull "@adobe" out of the email — a bogus mention, and an
+// actual ping if that fragment is a real user (jane@octocat.com -> @octocat).
+// A real handle is a whitespace-delimited token that STARTS with '@' (emails
+// don't), so we tokenize each rule line and keep only @user / @org/team tokens.
+const OWNER_HANDLE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\/[A-Za-z0-9._-]+)?$/;
+function parseCodeowners(text) {
+  const owners = new Set();
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.replace(/#.*$/, '').trim(); // strip comments + blanks
+    if (!line) continue;
+    // First token is the path pattern; owners follow. Emails are dropped because
+    // they don't start with '@'; the pattern is dropped for the same reason.
+    for (const tok of line.split(/\s+/).slice(1)) {
+      if (OWNER_HANDLE.test(tok)) owners.add(tok);
+    }
+  }
+  return [...owners];
+}
+
 // @-mention resolution: prefer CODEOWNERS (the declared owners), and only if the
 // repo has none, fall back to the most recent human committer.
 async function getCodeowners(owner, repo, token) {
@@ -134,7 +155,7 @@ async function getCodeowners(owner, repo, token) {
     if (r.ok) {
       const j = await r.json();
       const text = Buffer.from(j.content || '', 'base64').toString('utf8');
-      const owners = [...new Set(text.match(/@[A-Za-z0-9/_-]+/g) || [])]; // every @owner / @org/team token
+      const owners = parseCodeowners(text);
       if (owners.length) return owners;
     }
   }
@@ -589,4 +610,4 @@ if (require.main === module) {
 }
 
 // Exported for unit testing the (network-free) dedup decision logic.
-module.exports = { decideIssueAction, findingKey, parseKeys, keysBlock, isMuted, issueBody };
+module.exports = { decideIssueAction, findingKey, parseKeys, keysBlock, isMuted, issueBody, parseCodeowners };
