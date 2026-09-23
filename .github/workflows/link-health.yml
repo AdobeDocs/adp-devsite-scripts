@@ -70,10 +70,23 @@ jobs:
         with:
           node-version: '22'
 
+      # Mint a short-lived installation token for the adp-devsite-app GitHub App
+      # so issues are filed by the app (adp-devsite-app[bot]) rather than a person.
+      # The built-in GITHUB_TOKEN is scoped to only this repo; `owner: AdobeDocs`
+      # scopes the app token across every repo the app is installed on.
+      - name: Mint app token (org-wide)
+        id: app-token
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.ADP_DEVSITE_APP_ID }}
+          private-key: ${{ secrets.ADP_DEVSITE_APP_PRIVATE_KEY }}
+          owner: AdobeDocs
+
       - name: Run sweep
         if: steps.gate.outputs.run == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.LINK_HEALTH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           SWEEP_ENV: ${{ github.event.inputs.env || 'prod' }}
           SWEEP_REPOS: ${{ github.event.inputs.repos || '' }}
           # Scheduled runs always file; manual runs file only if the box is checked.
