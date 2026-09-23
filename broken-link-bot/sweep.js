@@ -110,21 +110,14 @@ function decideIssueAction(existing, findings) {
   if (existing.state === 'open') {
     return findings.length ? { op: 'update', show: findings, storedKeys: currentKeys } : { op: 'close' };
   }
-  // closed: only genuinely-new links (not in the dismissed set) may reopen it
-  const prevKeys = parseKeys(existing.body);
-  const prev = new Set(prevKeys);
-  const newFindings = findings.filter((f) => !prev.has(findingKey(f)));
-  if (!newFindings.length) return { op: 'noop-closed' };
-  // remember everything ever reported so dismissed links never come back
-  const storedKeys = [...new Set([...prevKeys, ...currentKeys])].sort();
-  return {
-    op: 'reopen',
-    show: newFindings,
-    dismissed: prevKeys, // preserved in a collapsed section so the prior record stays visible
-    storedKeys,
-    comment: `${ISSUE_MARKER}\n🔄 Reopened: ${newFindings.length} new broken link(s) found since this issue was closed. The previously-reported links are kept below in a collapsed section.`,
-  };
+  // closed: reopen if any link is broken again/still broken (a regressed link is
+  // never buried); stay closed only once everything resolves.
+  if (!findings.length) return { op: 'noop-closed' };
+  return { op: 'reopen', show: findings, storedKeys: currentKeys, comment: reopenComment(findings.length) };
 }
+
+const reopenComment = (n) =>
+  `${ISSUE_MARKER}\n🔄 Reopened: ${n} link(s) are broken again (or still broken). We'll keep reporting them until they're fixed. If any is a false positive, let us know so we can fix the checker, or add the \`link-health: ignore\` label to opt this repo out.`;
 
 // Parse CODEOWNERS into the @-mention handles it declares. We must PARSE, not
 // regex-scrape: CODEOWNERS allows email owners (docs@adobe.com), and a naive
@@ -187,28 +180,9 @@ async function getMentions(owner, repo, token) {
 }
 
 const MAX_ROWS = 100; // keep issues readable and under GitHub's body-size limit
-const MAX_DISMISSED = 300; // collapsed section can hold more; still cap for body-size safety
-// Render a stored key ("file:line|target") as a table row for the collapsed
-// "previously reported" section.
-function dismissedTable(keys, blobBase = '') {
-  const shown = keys.slice(0, MAX_DISMISSED);
-  const rows = shown
-    .map((k) => {
-      const i = k.indexOf('|');
-      const loc = i < 0 ? k : k.slice(0, i);
-      const link = i < 0 ? '' : k.slice(i + 1);
-      // Link the source file to its blob view so the owner can click straight to it.
-      const locCell = blobBase ? `[\`${loc}\`](${blobBase}/${loc})` : `\`${loc}\``;
-      return `| ${locCell} | ${link} |`;
-    })
-    .join('\n');
-  const more = keys.length > MAX_DISMISSED ? `\n\n_…and ${keys.length - MAX_DISMISSED} more._` : '';
-  return `\n<details><summary>Previously reported — ${keys.length} link(s) (dismissed when this issue was last closed)</summary>\n\n| Source (file) | Link |\n|---|---|\n${rows}${more}\n\n</details>\n`;
-}
 
-// `show` = the links to display; `storedKeys` = the full set to remember (hidden);
-// `dismissed` = keys to preserve in a collapsed section (only on reopen).
-function issueBody(pathPrefix, env, show, owners, storedKeys, dismissed = [], mentionSource = '', blobBase = '') {
+// `show` = the links to display; `storedKeys` = the full set recorded (hidden).
+function issueBody(pathPrefix, env, show, owners, storedKeys, mentionSource = '', blobBase = '') {
   const shown = show.slice(0, MAX_ROWS);
   // Source cell links to the exact line in the repo's own file (blob/HEAD =
   // default branch) so the owner can click through to the broken link.
@@ -225,7 +199,6 @@ function issueBody(pathPrefix, env, show, owners, storedKeys, dismissed = [], me
       ? 'flagging for your team (CODEOWNERS).'
       : "flagging you as this repo's most recent contributor.";
   const mention = owners.length ? `\n${owners.join(' ')} — ${note}\n` : '';
-  const dismissedSection = dismissed.length ? dismissedTable(dismissed, blobBase) : '';
   return `${ISSUE_MARKER}
 Automated link-health check for pages published under **\`${pathPrefix}\`** (checked against **${env}**).
 **${show.length}** link(s) in this repo's \`src/pages\` currently return a 404.
@@ -233,8 +206,7 @@ ${mention}
 | Source (file:line) | Type | Broken link |
 |---|---|---|
 ${rows}${more}
-${dismissedSection}
-_False positive? **Close this issue** (a note on why, or a bug against \`AdobeDocs/adp-devsite-scripts\`, helps us fix the checker). We won't re-file these links — only genuinely new ones can reopen it. To disable the automated link-health check for this repository, add the label \`link-health: ignore\`._
+_False positive? Let us know (a note here, or a bug against \`AdobeDocs/adp-devsite-scripts\`) so we can fix the checker — closing the issue won't stop a link that's still broken from being reported again. To turn off link-health checks for this repository entirely, add the label \`link-health: ignore\`._
 _Filed by \`adp-devsite-scripts/broken-link-bot\`. Updates each run; auto-closes when all links resolve._
 ${keysBlock(storedKeys)}`;
 }
@@ -314,7 +286,7 @@ async function fileIssue(site, env, findings, token) {
   // blob/HEAD always resolves to the repo's default branch, so we don't need to
   // thread the branch name here just to build a clickable source link.
   const blobBase = `https://github.com/${owner}/${repo}/blob/HEAD`;
-  const body = issueBody(pathPrefix || '/', env, decision.show, owners, decision.storedKeys, decision.dismissed || [], source, blobBase);
+  const body = issueBody(pathPrefix || '/', env, decision.show, owners, decision.storedKeys, source, blobBase);
 
   if (decision.op === 'create') {
     const r = await fetch(`${API}/repos/${owner}/${repo}/issues`, {
@@ -335,7 +307,7 @@ async function fileIssue(site, env, findings, token) {
   });
   if (!r.ok) throw new Error(`${decision.op} issue -> HTTP ${r.status}`);
   if (decision.comment) await addComment(owner, repo, existing.number, decision.comment, token);
-  const action = decision.op === 'reopen' ? `reopened (+${decision.show.length} new)` : 'updated';
+  const action = decision.op === 'reopen' ? `reopened (${decision.show.length} broken)` : 'updated';
   return { url: existing.html_url, action, owners };
 }
 
