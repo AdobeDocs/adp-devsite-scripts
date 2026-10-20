@@ -5,7 +5,7 @@ const PAGES_DIR = "src/pages/";
 const CONFIG_PATH = "src/pages/config.md";
 
 // "## [v4.57.22] 2026-10-08", "## [4.54.18] 2026-09-02", "## [4.16.11] - 2024-11-18", "## 2025-11-14"
-const RELEASE_HEADING_RE = /^##\s+(?:\[?\s*v?(\d+(?:\.\d+)*)\s*\]?\s*[-–—]?\s*)?\(?(\d{4}-\d{2}-\d{2})\)?\s*$/i;
+const RELEASE_HEADING_RE = /^##\s+(?:\[?\s*(v?[\d.]+)\s*\]?\s*[-–—]?\s*)?\(?(\d{4}-\d{2}-\d{2})\)?\s*$/i;
 // "### Added", "### Fixed", "### Documentation"
 const SECTION_HEADING_RE = /^###\s+(.+?)\s*$/;
 
@@ -119,7 +119,9 @@ function parseReleases(markdown) {
         if (releaseMatch) {
             // lines before the first ### of a release go into an untitled section
             section = { title: null, lines: [] };
-            release = { version: releaseMatch[1] || null, date: releaseMatch[2], sections: [section] };
+            const rawVersion = releaseMatch[1] || null;
+            const version = rawVersion ? rawVersion.replace(/^v/i, "").trim() : null;
+            release = { version, rawVersion, date: releaseMatch[2], sections: [section] };
             releases.push(release);
             continue;
         }
@@ -206,14 +208,19 @@ function slugify(text) {
     return text
         .toLowerCase()
         .trim()
+        .replace(/\./g, "")
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
 }
 
 function buildItem(release, { changelogUrl, changelogDir, siteBase }) {
     const title = release.version ? `v${release.version}` : release.date;
+    const headingText = release.rawVersion
+        ? `${release.rawVersion} ${release.date}`
+        : (release.date ? release.date.replace(/^\d{4}-/, "") : "");
+    const anchor = slugify(headingText);
     const guid = [release.version, release.date].filter(Boolean).join("-");
-    const link = `${changelogUrl}#${slugify(guid)}`;
+    const link = anchor ? `${changelogUrl}#${anchor}` : changelogUrl;
     const description = release.sections
         .map(section => sectionToHtml(section, changelogDir, siteBase))
         .filter(Boolean)
