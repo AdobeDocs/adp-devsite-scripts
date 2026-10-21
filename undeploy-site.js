@@ -33,6 +33,12 @@ async function request(url, options = {}) {
   }
 }
 
+async function getJson(url) {
+  const res = await request(url);
+  if (!res.ok) fail(`${res.status} fetching ${url}`);
+  return res.json();
+}
+
 async function listPublished() {
   const res = await request(`${admin.replace('{op}', 'status')}/*`, {
     method: 'POST',
@@ -43,13 +49,15 @@ async function listPublished() {
   const { links } = await res.json();
 
   let job;
-  do {
+  for (let i = 0; job?.state !== 'stopped'; i++) {
+    if (i === 60) fail(`Bulk status job did not finish after 60s: ${links.self}`);
     await sleep(1000);
-    job = await (await request(links.self)).json();
-  } while (job.state !== 'stopped');
+    job = await getJson(links.self);
+  }
 
-  const details = await (await request(`${links.self}/details`)).json();
-  return details.data.resources.map((r) => r.path);
+  const details = await getJson(`${links.self}/details`);
+  const resources = details.data?.resources ?? fail(`No resources in ${links.self}/details`);
+  return resources.map((r) => r.path);
 }
 
 // Other sites nested under this prefix (e.g. hub -> spokes) live in their own repos.
@@ -83,4 +91,4 @@ async function listSpokes() {
   }
   console.log(`\nDone. Failed: ${failed}`);
   process.exitCode = failed ? 1 : 0;
-})();
+})().catch((e) => fail(e.message));
