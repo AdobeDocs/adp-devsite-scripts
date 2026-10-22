@@ -3,6 +3,7 @@ const path = require("path");
 const SITE_ORIGIN = "https://developer.adobe.com";
 const PAGES_DIR = "src/pages/";
 const CONFIG_PATH = "src/pages/config.md";
+const STATIC_ASSET_EXTENSIONS = /\.(png|jpe?g|gif|svg|webp|avif|ico|pdf|zip|xml|json|mp4|webm|mov)$/i;
 
 // "## [v4.57.22] 2026-10-08", "## [4.54.18] 2026-09-02", "## [4.16.11] - 2024-11-18", "## 2025-11-14"
 const RELEASE_HEADING_RE = /^##\s+(?:\[?\s*(v?[\d.]+)\s*\]?\s*[-–—]?\s*)?\(?(\d{4}-\d{2}-\d{2})\)?\s*$/i;
@@ -42,15 +43,33 @@ async function getChangeLogXmlContent(owner, repo, githubToken, changeLogFilePat
     const configContent = await fetchFileContent(owner, repo, githubToken, CONFIG_PATH, ref);
     const siteBase = `${SITE_ORIGIN}${extractPathPrefix(configContent)}`;
 
+    const branch = ref ? ref.replace(/^refs\/heads\//, "") : "main";
+    const rawBaseUrl = (owner && repo) ? `https://raw.githubusercontent.com/${owner}/${repo}/${branch}` : "";
+
     // "src/pages/guides/changelog/index.md" -> page "guides/changelog", links resolve from "guides/changelog"
-    const pagePath = changeLogFilePath.replace(/\\/g, "/").replace(PAGES_DIR, "");
+    const normalizedChangeLogPath = changeLogFilePath.replace(/\\/g, "/");
+    const changelogRepoDir = path.posix.dirname(normalizedChangeLogPath);
+    const pagePath = normalizedChangeLogPath.replace(PAGES_DIR, "");
     const changelogDir = path.posix.dirname(pagePath);
     const changelogUrl = `${siteBase}/${pagePath.replace(/(\/?index)?\.md$/i, "")}/`;
-    const feedUrl = `${siteBase}/${feedFilePath.replace(/\\/g, "/").replace(PAGES_DIR, "")}`;
+
+    const cleanFeedPath = feedFilePath.replace(/\\/g, "/");
+    const feedUrl = rawBaseUrl
+        ? `${rawBaseUrl}/${cleanFeedPath}`
+        : `${siteBase}/${cleanFeedPath.replace(PAGES_DIR, "")}`;
 
     const { title, description } = extractFeedMetadata(content);
 
-    return buildFeed(releases, { title, description, changelogUrl, feedUrl, changelogDir, siteBase });
+    return buildFeed(releases, {
+        title,
+        description,
+        changelogUrl,
+        feedUrl,
+        changelogDir,
+        siteBase,
+        rawBaseUrl,
+        changelogRepoDir
+    });
 }
 
 function extractFeedMetadata(markdown) {
@@ -148,11 +167,55 @@ function escapeXml(text) {
         .replace(/"/g, "&quot;");
 }
 
-function resolveLink(href, changelogDir, siteBase) {
-    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("#")) return href;
-    if (href.startsWith("/")) return `${SITE_ORIGIN}${href}`;
+function unescapeXml(text) {
+    if (!text) return "";
+    return text
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"');
+}
+
+function resolveAssetUrl(src, changelogRepoDir, rawBaseUrl, siteBase) {
+    if (!src) return "";
+    if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) {
+        return src;
+    }
+
+    let repoRelativePath = "";
+    if (src.startsWith("/")) {
+        const clean = src.replace(/^\/+/, "");
+        repoRelativePath = clean.startsWith("src/pages/") ? clean : path.posix.join("src/pages", clean);
+    } else {
+        repoRelativePath = path.posix.normalize(path.posix.join(changelogRepoDir || "", src));
+    }
+
+    if (rawBaseUrl) {
+        return `${rawBaseUrl}/${repoRelativePath}`;
+    }
+
+    const pageRelative = repoRelativePath.replace(/^src\/pages\//, "");
+    return `${siteBase}/${pageRelative}`;
+}
+
+function resolveLink(href, changelogDir, siteBase, rawBaseUrl, changelogRepoDir) {
+    if (!href) return "";
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("#") || href.startsWith("//")) {
+        return href;
+    }
 
     const [file, hash] = href.split("#");
+
+    // Static assets (.png, .pdf, .zip, etc.) must resolve to raw GitHub URL since EDS only publishes .md/.json
+    if (file && STATIC_ASSET_EXTENSIONS.test(file)) {
+        const assetUrl = resolveAssetUrl(file, changelogRepoDir, rawBaseUrl, siteBase);
+        return hash ? `${assetUrl}#${hash}` : assetUrl;
+    }
+
+    if (href.startsWith("/")) {
+        return `${SITE_ORIGIN}${href}`;
+    }
+
     const resolved = path.posix
         .join(changelogDir, file)
         .replace(/(^|\/)index\.md$/i, "$1")
@@ -160,7 +223,7 @@ function resolveLink(href, changelogDir, siteBase) {
     return `${siteBase}/${resolved}${hash ? `#${hash}` : ""}`;
 }
 
-function formatInline(text, changelogDir, siteBase) {
+function formatInline(text, changelogDir, siteBase, rawBaseUrl, changelogRepoDir) {
     // code spans are swapped out first so their content is not treated as markdown
     const codeSpans = [];
     let formatted = text.replace(/`([^`]+)`/g, (_, code) => {
@@ -169,20 +232,45 @@ function formatInline(text, changelogDir, siteBase) {
     });
 
     formatted = escapeXml(formatted);
+
+    // Linked images: [![alt](imgSrc)](linkHref)
+    formatted = formatted.replace(
+        /\[!\[([^\]]*)\]\(([^)\s]+)\)\]\(([^)\s]+)\)/g,
+        (_, alt, imgSrc, linkHref) => {
+            const resolvedLink = resolveLink(unescapeXml(linkHref), changelogDir, siteBase, rawBaseUrl, changelogRepoDir);
+            const resolvedImg = resolveAssetUrl(unescapeXml(imgSrc), changelogRepoDir, rawBaseUrl, siteBase);
+            return `<a href="${escapeXml(resolvedLink)}"><img src="${escapeXml(resolvedImg)}" alt="${alt}" /></a>`;
+        }
+    );
+
+    // Standalone images: ![alt](imgSrc)
+    formatted = formatted.replace(
+        /!\[([^\]]*)\]\(([^)\s]+)\)/g,
+        (_, alt, imgSrc) => {
+            const resolvedImg = resolveAssetUrl(unescapeXml(imgSrc), changelogRepoDir, rawBaseUrl, siteBase);
+            return `<img src="${escapeXml(resolvedImg)}" alt="${alt}" />`;
+        }
+    );
+
+    // Regular links: [linkText](href)
     formatted = formatted.replace(
         /\[([^\]]+)\]\(([^)\s]+)\)/g,
-        (_, linkText, href) => `<a href="${resolveLink(href, changelogDir, siteBase)}">${linkText}</a>`
+        (_, linkText, href) => {
+            const resolvedLink = resolveLink(unescapeXml(href), changelogDir, siteBase, rawBaseUrl, changelogRepoDir);
+            return `<a href="${escapeXml(resolvedLink)}">${linkText}</a>`;
+        }
     );
+
     formatted = formatted.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     formatted = formatted.replace(/__([^_]+)__/g, "<strong>$1</strong>");
 
     return formatted.replace(/\u0000(\d+)\u0000/g, (_, index) => codeSpans[index]);
 }
 
-function sectionToHtml(section, changelogDir, siteBase) {
+function sectionToHtml(section, changelogDir, siteBase, rawBaseUrl, changelogRepoDir) {
     const html = [];
     if (section.title) {
-        html.push(`<h3>${formatInline(section.title, changelogDir, siteBase)}</h3>`);
+        html.push(`<h3>${formatInline(section.title, changelogDir, siteBase, rawBaseUrl, changelogRepoDir)}</h3>`);
     }
 
     let inList = false;
@@ -191,13 +279,13 @@ function sectionToHtml(section, changelogDir, siteBase) {
         if (bullet) {
             if (!inList) html.push("<ul>");
             inList = true;
-            html.push(`<li>${formatInline(bullet[1], changelogDir, siteBase)}</li>`);
+            html.push(`<li>${formatInline(bullet[1], changelogDir, siteBase, rawBaseUrl, changelogRepoDir)}</li>`);
             continue;
         }
         if (!line.trim()) continue;
         if (inList) html.push("</ul>");
         inList = false;
-        html.push(`<p>${formatInline(line.trim(), changelogDir, siteBase)}</p>`);
+        html.push(`<p>${formatInline(line.trim(), changelogDir, siteBase, rawBaseUrl, changelogRepoDir)}</p>`);
     }
     if (inList) html.push("</ul>");
 
@@ -213,16 +301,23 @@ function slugify(text) {
         .replace(/^-+|-+$/g, "");
 }
 
-function buildItem(release, { changelogUrl, changelogDir, siteBase }) {
+function buildItem(release, { changelogUrl, changelogDir, siteBase, rawBaseUrl, changelogRepoDir }) {
     const title = release.version ? `v${release.version}` : release.date;
-    const headingText = release.rawVersion
-        ? `${release.rawVersion} ${release.date}`
-        : (release.date ? release.date.replace(/^\d{4}-/, "") : "");
-    const anchor = slugify(headingText);
+
+    // Anchor ID generation matching AEM EDS:
+    let anchor = "";
+    if (release.rawVersion && /^v/i.test(release.rawVersion)) {
+        anchor = slugify(`${release.rawVersion} ${release.date}`);
+    } else if (release.rawVersion) {
+        anchor = release.date;
+    } else if (release.date) {
+        anchor = release.date.replace(/^\d{4}-/, "");
+    }
+
     const guid = [release.version, release.date].filter(Boolean).join("-");
     const link = anchor ? `${changelogUrl}#${anchor}` : changelogUrl;
     const description = release.sections
-        .map(section => sectionToHtml(section, changelogDir, siteBase))
+        .map(section => sectionToHtml(section, changelogDir, siteBase, rawBaseUrl, changelogRepoDir))
         .filter(Boolean)
         .join("\n")
         .replace(/]]>/g, "]]]]><![CDATA[>");
