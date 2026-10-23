@@ -5,8 +5,6 @@ const PAGES_DIR = "src/pages/";
 const CONFIG_PATH = "src/pages/config.md";
 const STATIC_ASSET_EXTENSIONS = /\.(png|jpe?g|gif|svg|webp|avif|ico|pdf|zip|xml|json|mp4|webm|mov)$/i;
 
-// "## [v4.57.22] 2026-10-08", "## [4.54.18] 2026-09-02", "## [4.16.11] - 2024-11-18", "## 2025-11-14"
-const RELEASE_HEADING_RE = /^##\s+(?:\[?\s*(v?[\d.]+)\s*\]?\s*[-–—]?\s*)?\(?(\d{4}-\d{2}-\d{2})\)?\s*$/i;
 // "### Added", "### Fixed", "### Documentation"
 const SECTION_HEADING_RE = /^###\s+(.+?)\s*$/;
 
@@ -123,7 +121,37 @@ function extractPathPrefix(configContent) {
     return pathPrefix.replace(/\/+$/, "");
 }
 
-// Splits the changelog into releases (## version date), each with its sections (### Added, ### Fixed, ...)
+// Parses a release heading:
+function parseHeading(rawLine) {
+    const headingText = rawLine.replace(/^##\s+/, "").trim();
+    if (!headingText || /^(changelog|release notes)$/i.test(headingText)) {
+        return null;
+    }
+
+    const dateMatch = headingText.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    const date = dateMatch ? dateMatch[1] : null;
+
+    let remainder = headingText;
+    if (date) {
+        remainder = remainder.replace(date, "").trim();
+    }
+    remainder = remainder
+        .replace(/^[-–—\s[()\]]+|[-–—\s[()\]]+$/g, "")
+        .trim();
+
+    const rawVersion = remainder || null;
+    let version = null;
+    if (rawVersion) {
+        if (/^v?[\d.]+$/i.test(rawVersion)) {
+            version = rawVersion.replace(/^v/i, "").trim();
+        } else {
+            version = rawVersion;
+        }
+    }
+
+    return { rawVersion, version, date, headingText };
+}
+
 function parseReleases(markdown) {
     const lines = markdown
         .replace(/\r\n/g, "\n")
@@ -134,15 +162,15 @@ function parseReleases(markdown) {
     let section = null;
 
     for (const line of lines) {
-        const releaseMatch = line.match(RELEASE_HEADING_RE);
-        if (releaseMatch) {
-            // lines before the first ### of a release go into an untitled section
-            section = { title: null, lines: [] };
-            const rawVersion = releaseMatch[1] || null;
-            const version = rawVersion ? rawVersion.replace(/^v/i, "").trim() : null;
-            release = { version, rawVersion, date: releaseMatch[2], sections: [section] };
-            releases.push(release);
-            continue;
+        if (line.startsWith("## ") && !line.startsWith("### ")) {
+            const parsed = parseHeading(line);
+            if (parsed) {
+                // lines before the first ### of a release go into an untitled section
+                section = { title: null, lines: [] };
+                release = { ...parsed, sections: [section] };
+                releases.push(release);
+                continue;
+            }
         }
         if (!release) continue;
 
@@ -302,20 +330,36 @@ function slugify(text) {
 }
 
 function buildItem(release, { changelogUrl, changelogDir, siteBase, rawBaseUrl, changelogRepoDir }) {
-    const title = release.version ? `v${release.version}` : release.date;
+    const { rawVersion, version, date, headingText } = release;
+
+    let title = "";
+    if (rawVersion) {
+        if (/^[\d.]+$/.test(rawVersion)) {
+            title = `v${version}`;
+        } else if (/^v[\d.]+$/i.test(rawVersion)) {
+            title = `v${version}`;
+        } else {
+            title = rawVersion;
+        }
+    } else {
+        title = date || headingText;
+    }
 
     // Anchor ID generation matching AEM EDS:
     let anchor = "";
-    if (release.rawVersion && /^v/i.test(release.rawVersion)) {
-        anchor = slugify(`${release.rawVersion} ${release.date}`);
-    } else if (release.rawVersion) {
-        anchor = release.date;
-    } else if (release.date) {
-        anchor = release.date.replace(/^\d{4}-/, "");
+    if (rawVersion && /^v[\d.]/i.test(rawVersion)) {
+        anchor = slugify(`${rawVersion} ${date || ""}`);
+    } else if (rawVersion && /^[\d.]/.test(rawVersion)) {
+        anchor = date || slugify(rawVersion);
+    } else if (!rawVersion && date) {
+        anchor = date.replace(/^\d{4}-/, "");
+    } else {
+        anchor = slugify(headingText);
     }
 
-    const guid = [release.version, release.date].filter(Boolean).join("-");
+    const guid = [version, date].filter(Boolean).join("-") || slugify(headingText);
     const link = anchor ? `${changelogUrl}#${anchor}` : changelogUrl;
+    const pubDate = date ? new Date(`${date}T00:00:00Z`).toUTCString() : null;
     const description = release.sections
         .map(section => sectionToHtml(section, changelogDir, siteBase, rawBaseUrl, changelogRepoDir))
         .filter(Boolean)
@@ -325,19 +369,25 @@ function buildItem(release, { changelogUrl, changelogDir, siteBase, rawBaseUrl, 
     return `    <item>
       <title>${escapeXml(title)}</title>
       <link>${escapeXml(link)}</link>
-      <guid isPermaLink="false">${escapeXml(guid)}</guid>
-      <pubDate>${new Date(`${release.date}T00:00:00Z`).toUTCString()}</pubDate>
+      <guid isPermaLink="false">${escapeXml(guid)}</guid>${pubDate ? `\n      <pubDate>${pubDate}</pubDate>` : ""}
       <description><![CDATA[${description}]]></description>
     </item>`;
 }
 
 function buildFeed(releases, options) {
     const { title, description, changelogUrl, feedUrl } = options;
-    // newest first; releases sharing a date keep their changelog order
-    const sorted = [...releases].sort((a, b) => b.date.localeCompare(a.date));
+    // Keep changelog order if dates are missing or equal, sort if both have dates
+    const sorted = [...releases].sort((a, b) => {
+        if (a.date && b.date) {
+            return b.date.localeCompare(a.date);
+        }
+        return 0;
+    });
     const items = sorted.map(release => buildItem(release, options)).join("\n");
-    // taken from the newest release instead of "now", so an unchanged changelog always produces an identical feed
-    const lastBuildDate = new Date(`${sorted[0].date}T00:00:00Z`).toUTCString();
+    const newestWithDate = sorted.find(r => r.date);
+    const lastBuildDate = newestWithDate
+        ? new Date(`${newestWithDate.date}T00:00:00Z`).toUTCString()
+        : new Date().toUTCString();
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
