@@ -1,7 +1,8 @@
 // Preview and live use the AEM admin bulk APIs (one job per chunk of paths) instead of one request per file.
 
 const ADMIN_URL = 'https://admin.hlx.page';
-const RETRYABLE_STATUS_CODES = [400, 429, 500, 502, 503, 504];
+const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
+const INVALID_PATH_ERROR = /path not valid: (\S+)/;
 const BULK_CHUNK_SIZE = 1000;
 const JOB_POLL_INTERVAL_MS = 5000;
 const JOB_TIMEOUT_MS = 60 * 60 * 1000;
@@ -34,11 +35,22 @@ const getJson = async (url) => {
 
 // Starts a bulk preview/live job, waits for it to stop and returns the per-resource results
 const runBulkJob = async ({ url, headers, paths, isDelete }) => {
-  const res = await fetchWithRetry(url, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ paths, forceUpdate: true, delete: isDelete }),
-  });
+  // The bulk API rejects the whole request if any path is invalid, so drop those and retry with the rest
+  const invalid = [];
+  let res;
+  for (;;) {
+    if (!paths.length) return invalid;
+    res = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths, forceUpdate: true, delete: isDelete }),
+    });
+    const xError = res.headers.get('x-error') ?? '';
+    const invalidPath = xError.match(INVALID_PATH_ERROR)?.[1];
+    if (res.status !== 400 || !paths.includes(invalidPath)) break;
+    invalid.push({ path: invalidPath, status: 400, error: xError });
+    paths = paths.filter((path) => path !== invalidPath);
+  }
   if (!res.ok) {
     throw new Error(`${describeError(res)} starting bulk job`);
   }
@@ -47,7 +59,7 @@ const runBulkJob = async ({ url, headers, paths, isDelete }) => {
   // Small jobs run synchronously (HTTP 200): results are inline and the job URL is not pollable
   if (startedJob?.state === 'stopped') {
     console.log(`Bulk job for ${paths.length} path(s) completed synchronously`);
-    return startedJob.data?.resources ?? [];
+    return [...invalid, ...(startedJob.data?.resources ?? [])];
   }
   console.log(`Started bulk job for ${paths.length} path(s): ${links.self}`);
 
@@ -64,7 +76,7 @@ const runBulkJob = async ({ url, headers, paths, isDelete }) => {
   } while (job.state !== 'stopped');
 
   const details = await getJson(`${links.self}/details`);
-  return details.data?.resources ?? [];
+  return [...invalid, ...(details.data?.resources ?? [])];
 };
 
 const chunk = (array, size) => {
