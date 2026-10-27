@@ -25,8 +25,8 @@ const fetchWithRetry = async (url, options = {}, maxRetries = 5) => {
 
 const describeError = (res) => `HTTP ${res.status}${res.headers.get('x-error') ? ` - ${res.headers.get('x-error')}` : ''}`;
 
-const getJson = async (url) => {
-  const res = await fetchWithRetry(url);
+const getJson = async (url, headers = {}) => {
+  const res = await fetchWithRetry(url, { headers });
   if (!res.ok) {
     throw new Error(`${describeError(res)} fetching ${url}`);
   }
@@ -34,7 +34,7 @@ const getJson = async (url) => {
 };
 
 // Starts a bulk preview/live job, waits for it to stop and returns the per-resource results
-const runBulkJob = async ({ url, headers, paths, isDelete }) => {
+const runBulkJob = async ({ url, headers, auth, paths, isDelete }) => {
   // The bulk API rejects the whole request if any path is invalid, so drop those and retry with the rest
   const invalid = [];
   let res;
@@ -70,12 +70,12 @@ const runBulkJob = async ({ url, headers, paths, isDelete }) => {
       throw new Error(`Bulk job did not finish within ${JOB_TIMEOUT_MS / 60000} minutes: ${links.self}`);
     }
     await delay(JOB_POLL_INTERVAL_MS);
-    job = await getJson(links.self);
+    job = await getJson(links.self, auth);
     const { processed = 0, total = paths.length, failed = 0 } = job.progress ?? {};
     console.log(`  ${job.state}: ${processed}/${total} processed, ${failed} failed`);
   } while (job.state !== 'stopped');
 
-  const details = await getJson(`${links.self}/details`);
+  const details = await getJson(`${links.self}/details`, auth);
   return [...invalid, ...(details.data?.resources ?? [])];
 };
 
@@ -105,10 +105,12 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     return;
   }
 
+  // Bulk APIs require an authenticated identity; the key is per EDS site (stage vs prod)
+  const auth = process.env.AEM_ADMIN_API_KEY ? { authorization: `token ${process.env.AEM_ADMIN_API_KEY}` } : {};
   // hacky way to do operations on our adp-devsite-stage env
   const headers = siteEnv.includes('stage') && operation === 'preview'
-    ? { 'x-content-source-authorization': branch }
-    : {};
+    ? { ...auth, 'x-content-source-authorization': branch }
+    : auth;
 
   const operationUrl = `${ADMIN_URL}/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}`;
   const isAllowed = (file) => file.endsWith('.md') || file.endsWith('.json');
@@ -130,7 +132,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     for (const pathChunk of chunk(paths, BULK_CHUNK_SIZE)) {
       console.log(`::group:: ${label} (bulk) on ${pathChunk.length} path(s)`);
       try {
-        const resources = await runBulkJob({ url: `${operationUrl}/*`, headers, paths: pathChunk, isDelete });
+        const resources = await runBulkJob({ url: `${operationUrl}/*`, headers, auth, paths: pathChunk, isDelete });
         resources.forEach(({ path, status, error }) => {
           if (!error && (status === undefined || (status >= 200 && status < 400))) {
             summaryData.push([path, `✅ Success`, `${status ? `HTTP ${status} - ` : ''}${label} completed`]);
