@@ -137,13 +137,13 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
         const resources = await runBulkJob({ url: `${operationUrl}/`, headers, auth, paths: pathChunk, isDelete });
         resources.forEach(({ path, status, error }) => {
           const ok = !error && (status === undefined || (status >= 200 && status < 400));
-          console.log(`  ${ok ? '✅' : '❌'} ${status ?? ''} ${toWebUrl(path)}${error ? ` - ${error}` : ''}`);
           if (ok) {
+            console.log(`  ✅ ${status ?? ''} ${toWebUrl(path)}`);
             summaryData.push([path, `✅ Success`, `${status ? `HTTP ${status} - ` : ''}${label} completed`]);
           } else {
             if (!isDelete) hasErrors = true;
             summaryData.push([path, `❌ Error`, `HTTP ${status}${error ? ` - ${error}` : ''} - ${label} failed`]);
-            console.error(`::error::${label} failed for ${path}: HTTP ${status}${error ? ` - ${error}` : ''}`);
+            console.error(`::error::${label} failed: HTTP ${status} ${toWebUrl(path)}${error ? ` - ${error}` : ''}`);
           }
         });
       } catch (error) {
