@@ -62,13 +62,13 @@ const runBulkJob = async ({ url, headers, auth, paths, isDelete }) => {
     console.log(`Bulk job for ${paths.length} path(s) completed synchronously`);
     return [...invalid, ...(startedJob.data?.resources ?? [])];
   }
-  console.log(`Started bulk job for ${paths.length} path(s): ${links.self}`);
+  console.log(`Started bulk job for ${paths.length} path(s)`);
 
   const deadline = Date.now() + JOB_TIMEOUT_MS;
   let job;
   do {
     if (Date.now() > deadline) {
-      throw new Error(`Bulk job did not finish within ${JOB_TIMEOUT_MS / 60000} minutes: ${links.self}`);
+      throw new Error(`Bulk job did not finish within ${JOB_TIMEOUT_MS / 60000} minutes: ${startedJob?.name ?? ''}`);
     }
     await delay(JOB_POLL_INTERVAL_MS);
     job = await getJson(links.self, auth);
@@ -126,6 +126,9 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   const changedPaths = changes.filter(isAllowed).map(toPath);
   const deletedPaths = deletions.filter(isAllowed).map(toPath);
 
+  const pageHost = `https://main--${edsSiteEnv}--adobedocs.${operation === 'live' ? 'aem.live' : 'aem.page'}`;
+  const toWebUrl = (path) => `${pageHost}${path.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '')}`;
+
   const runBulk = async (paths, isDelete) => {
     const label = isDelete ? `Delete ${operation}` : operation;
     for (const pathChunk of chunk(paths, BULK_CHUNK_SIZE)) {
@@ -133,7 +136,9 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
       try {
         const resources = await runBulkJob({ url: `${operationUrl}/`, headers, auth, paths: pathChunk, isDelete });
         resources.forEach(({ path, status, error }) => {
-          if (!error && (status === undefined || (status >= 200 && status < 400))) {
+          const ok = !error && (status === undefined || (status >= 200 && status < 400));
+          console.log(`  ${ok ? '✅' : '❌'} ${status ?? ''} ${toWebUrl(path)}${error ? ` - ${error}` : ''}`);
+          if (ok) {
             summaryData.push([path, `✅ Success`, `${status ? `HTTP ${status} - ` : ''}${label} completed`]);
           } else {
             if (!isDelete) hasErrors = true;
