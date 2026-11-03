@@ -1,6 +1,6 @@
 // Preview and live use the AEM admin bulk APIs (one job per chunk of paths) instead of one request per file.
 
-const ADMIN_URL = 'https://admin.hlx.page';
+const ADMIN_URL = 'https://api.aem.live';
 const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
 const INVALID_PATH_ERROR = /path not valid: (\S+)/;
 const BULK_CHUNK_SIZE = 1000;
@@ -88,7 +88,7 @@ const chunk = (array, size) => {
 };
 
 module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, pathPrefix }) => {
-  let edsSiteEnv, codeRepoBranch;
+  let edsSiteEnv;
   if (!['preview', 'live'].includes(operation)) {
     core.setFailed(`Unknown operation: ${operation}`);
     return;
@@ -96,10 +96,8 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
   if (siteEnv.includes('stage')) {
     edsSiteEnv = "adp-devsite-stage";
-    codeRepoBranch = "stage";
   } else if (siteEnv.includes('prod')) {
     edsSiteEnv = "adp-devsite";
-    codeRepoBranch = "main";
   } else {
     core.setFailed(`Unknown env to deploy to: ${siteEnv}`);
     return;
@@ -107,12 +105,12 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
 
   // Bulk APIs require an authenticated identity; the key is per EDS site (stage vs prod)
   const auth = process.env.AEM_ADMIN_API_KEY ? { authorization: `token ${process.env.AEM_ADMIN_API_KEY}` } : {};
-  // hacky way to do operations on our adp-devsite-stage env
   const headers = siteEnv.includes('stage') && operation === 'preview'
     ? { ...auth, 'x-content-source-authorization': branch }
     : auth;
 
-  const operationUrl = `${ADMIN_URL}/${operation}/adobedocs/${edsSiteEnv}/${codeRepoBranch}`;
+  const siteUrl = `${ADMIN_URL}/adobedocs/sites/${edsSiteEnv}`;
+  const operationUrl = `${siteUrl}/${operation}`;
   const isAllowed = (file) => file.endsWith('.md') || file.endsWith('.json');
   // have to pop src/pages from the file path
   const toPath = (file) => `${pathPrefix}/${file.replace('src/pages/', '')}`;
@@ -132,7 +130,7 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
     for (const pathChunk of chunk(paths, BULK_CHUNK_SIZE)) {
       console.log(`::group:: ${label} (bulk) on ${pathChunk.length} path(s)`);
       try {
-        const resources = await runBulkJob({ url: `${operationUrl}/*`, headers, auth, paths: pathChunk, isDelete });
+        const resources = await runBulkJob({ url: `${operationUrl}/`, headers, auth, paths: pathChunk, isDelete });
         resources.forEach(({ path, status, error }) => {
           if (!error && (status === undefined || (status >= 200 && status < 400))) {
             summaryData.push([path, `✅ Success`, `${status ? `HTTP ${status} - ` : ''}${label} completed`]);
@@ -153,10 +151,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   await runBulk(changedPaths, false);
   await runBulk(deletedPaths, true);
 
-  // Unpublishing doesn't reliably purge the CDN, so deleted pages can stay cached for hours
+  // Adding clear cache on delete because Unpublishing doesn't reliably purge the CDN.
   if (deletedPaths.length) {
     console.log(`::group:: Clear cache on ${deletedPaths.length} deleted path(s)`);
-    const cacheUrl = `${ADMIN_URL}/cache/adobedocs/${edsSiteEnv}/${codeRepoBranch}`;
+    const cacheUrl = `${siteUrl}/cache`;
     const cacheHeaders = siteEnv.includes('stage') ? { ...auth, 'x-content-source-authorization': branch } : auth;
     for (const path of deletedPaths) {
       try {
