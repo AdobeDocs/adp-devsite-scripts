@@ -135,7 +135,9 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
       console.log(`::group:: ${label} (bulk) on ${pathChunk.length} path(s)`);
       try {
         const resources = await runBulkJob({ url: `${operationUrl}/`, headers, auth, paths: pathChunk, isDelete });
-        resources.forEach(({ path, status, error }) => {
+        resources.forEach(({ path: resultPath, resourcePath, status, error }) => {
+          // Delete (*-remove) job results have resourcePath but no path
+          const path = resultPath ?? resourcePath;
           const ok = !error && (status === undefined || (status >= 200 && status < 400));
           if (ok) {
             console.log(`  ✅ ${status ?? ''} ${toWebUrl(path)}`);
