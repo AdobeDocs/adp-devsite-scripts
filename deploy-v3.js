@@ -2,7 +2,6 @@
 
 const ADMIN_URL = 'https://api.aem.live';
 const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
-const INVALID_PATH_ERROR = /path not valid: (\S+)/;
 const BULK_CHUNK_SIZE = 1000;
 const JOB_POLL_INTERVAL_MS = 5000;
 const JOB_TIMEOUT_MS = 60 * 60 * 1000;
@@ -35,23 +34,12 @@ const getJson = async (url, headers = {}) => {
 
 // Starts a bulk preview/live job, waits for it to stop and returns the per-resource results
 const runBulkJob = async ({ url, headers, auth, paths, isDelete }) => {
-  // The bulk API rejects the whole request if any path is invalid, so drop those and retry with the rest
-  const invalid = [];
-  let res;
-  for (;;) {
-    if (!paths.length) return invalid;
-    res = await fetchWithRetry(url, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      // api.aem.live rejects synchronous bulk jobs over 30 paths for Google content sources
-      body: JSON.stringify({ paths, forceUpdate: true, forceAsync: true, delete: isDelete }),
-    });
-    const xError = res.headers.get('x-error') ?? '';
-    const invalidPath = xError.match(INVALID_PATH_ERROR)?.[1];
-    if (res.status !== 400 || !paths.includes(invalidPath)) break;
-    invalid.push({ path: invalidPath, status: 400, error: xError });
-    paths = paths.filter((path) => path !== invalidPath);
-  }
+  const res = await fetchWithRetry(url, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    // api.aem.live rejects synchronous bulk jobs over 30 paths for Google content sources
+    body: JSON.stringify({ paths, forceUpdate: true, forceAsync: true, delete: isDelete }),
+  });
   if (!res.ok) {
     throw new Error(`${describeError(res)} starting bulk job`);
   }
@@ -60,7 +48,7 @@ const runBulkJob = async ({ url, headers, auth, paths, isDelete }) => {
   // Small jobs run synchronously (HTTP 200): results are inline and the job URL is not pollable
   if (startedJob?.state === 'stopped') {
     console.log(`Bulk job for ${paths.length} path(s) completed synchronously`);
-    return [...invalid, ...(startedJob.data?.resources ?? [])];
+    return startedJob.data?.resources ?? [];
   }
   console.log(`Started bulk job for ${paths.length} path(s)`);
 
@@ -77,7 +65,7 @@ const runBulkJob = async ({ url, headers, auth, paths, isDelete }) => {
   } while (job.state !== 'stopped');
 
   const details = await getJson(`${links.self}/details`, auth);
-  return [...invalid, ...(details.data?.resources ?? [])];
+  return details.data?.resources ?? [];
 };
 
 const chunk = (array, size) => {
@@ -144,8 +132,10 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
             summaryData.push([path, `✅ Success`, `${status ? `HTTP ${status} - ` : ''}${label} completed`]);
           } else {
             if (!isDelete) hasErrors = true;
-            summaryData.push([path, `❌ Error`, `HTTP ${status}${error ? ` - ${error}` : ''} - ${label} failed`]);
-            console.error(`::error::${label} failed: HTTP ${status} ${toWebUrl(path)}${error ? ` - ${error}` : ''}`);
+            // A 404 is usually a name EDS rewrites (e.g. "--" or uppercase), so "File not found" on the rewritten path misleads
+            const message = status === 404 && error ? error.split(" '")[0] : error;
+            summaryData.push([path, `❌ Error`, `HTTP ${status}${message ? ` - ${message}` : ''} - ${label} failed`]);
+            console.error(`::error::${label} failed: HTTP ${status} ${toWebUrl(path)}${message ? ` - ${message}` : ''}`);
           }
         });
       } catch (error) {
