@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Undeploy everything published under a devsite path prefix (the reverse of deploy.js).
-// Usage: node undeploy-site.js --path-prefix /adobe-for-creativity/ [--env prod|stage] [--yes]
+// Usage: AEM_ADMIN_API_KEY=<key> node undeploy-site.js --path-prefix /adobe-for-creativity/ [--env prod|stage] [--yes]
 const { parseArgs } = require('util');
 
 const ENVS = {
@@ -23,11 +23,15 @@ const env = ENVS[args.env] ?? fail(`Unknown --env ${args.env}`);
 const prefix = '/' + (args['path-prefix'] ?? fail('Provide --path-prefix')).replace(/^\/+|\/+$/g, '');
 if (prefix === '/') fail('Refusing to run on the site root.');
 
-const admin = `https://admin.hlx.page/{op}/adobedocs/${env.site}/${env.ref}`;
+const apiKey = process.env.AEM_ADMIN_API_KEY || fail('Set AEM_ADMIN_API_KEY to the API key for this site.');
+const siteUrl = `https://api.aem.live/adobedocs/sites/${env.site}`;
+// api.aem.live has no bulk status endpoint (405), so listing still uses admin.hlx.page.
+const bulkStatusUrl = `https://admin.hlx.page/status/adobedocs/${env.site}/${env.ref}/*`;
 
 async function request(url, options = {}) {
+  const init = { ...options, headers: { Authorization: `token ${apiKey}`, ...options.headers } };
   for (let i = 0; ; i++) {
-    const res = await fetch(url, options);
+    const res = await fetch(url, init);
     if (res.status !== 429 || i === 4) return res;
     await sleep(2 ** i * 1000);
   }
@@ -40,7 +44,7 @@ async function getJson(url) {
 }
 
 async function listPublished() {
-  const res = await request(`${admin.replace('{op}', 'status')}/*`, {
+  const res = await request(bulkStatusUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths: [`${prefix}/*`], select: ['preview', 'live'] }),
@@ -82,7 +86,7 @@ async function listSpokes() {
   for (const op of env.ops) {
     console.log(`\n== ${op} ==`);
     for (const page of pages) {
-      const url = `${admin.replace('{op}', op)}${encodeURI(page)}`;
+      const url = `${siteUrl}/${op}${encodeURI(page)}`;
       const status = await request(url, { method: METHOD[op] }).then((r) => r.status, (e) => e.message);
       const ok = status === 404 || (status >= 200 && status < 300);
       if (!ok) failed++;
