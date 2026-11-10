@@ -24,14 +24,16 @@ const prefix = '/' + (args['path-prefix'] ?? fail('Provide --path-prefix')).repl
 if (prefix === '/') fail('Refusing to run on the site root.');
 
 const apiKey = process.env.AEM_ADMIN_API_KEY || fail('Set AEM_ADMIN_API_KEY to the API key for this site.');
+// Live, preview, and cache operations: https://www.aem.live/docs/api.html
 const siteUrl = `https://api.aem.live/adobedocs/sites/${env.site}`;
 // api.aem.live has no bulk status endpoint (405), so listing still uses admin.hlx.page.
+// Bulk status: https://www.aem.live/docs/admin.html
 const bulkStatusUrl = `https://admin.hlx.page/status/adobedocs/${env.site}/${env.ref}/*`;
 
 async function request(url, options = {}) {
-  const init = { ...options, headers: { Authorization: `token ${apiKey}`, ...options.headers } };
+  const requestOptions = { ...options, headers: { Authorization: `token ${apiKey}`, ...options.headers } };
   for (let i = 0; ; i++) {
-    const res = await fetch(url, init);
+    const res = await fetch(url, requestOptions);
     if (res.status !== 429 || i === 4) return res;
     await sleep(2 ** i * 1000);
   }
