@@ -2,7 +2,7 @@
 
 const ADMIN_URL = 'https://api.aem.live';
 const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
-const BULK_CHUNK_SIZE = 1000;
+const BULK_CHUNK_SIZE = 200;
 const JOB_POLL_INTERVAL_MS = 5000;
 const JOB_TIMEOUT_MS = 60 * 60 * 1000;
 
