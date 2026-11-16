@@ -1,6 +1,15 @@
 # adp-devsite-scripts
 A collection of common scripts to be used by repos that deal with developer.adobe.com
 
+### Authentication
+Set `AEM_ADMIN_API_KEY` to an AEM admin API key for the target site:
+- `--env stage` → `adobedocs/adp-devsite-stage` (same key as the `AEM_ADMIN_API_KEY_STAGE` org secret)
+- `--env prod`  → `adobedocs/adp-devsite` (same key as `AEM_ADMIN_API_KEY_PROD`)
+
+Key values can't be retrieved after creation, so ask <owner/team> (site `admin` role) to run the script or to create a temporary key with the needed roles
+([AEM Authentication §6b](https://wiki.corp.adobe.com/spaces/AdobeCloudPlatform/pages/4098581925/AEM+Authentication)).
+Delete temporary keys when you're done.
+
 ## undeploy-site.js
 
 Removes everything published under a devsite path prefix, the reverse of `deploy.js`. Requires Node 20+.
