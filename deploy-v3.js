@@ -4,7 +4,7 @@ const ADMIN_URL = 'https://api.aem.live';
 const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
 const BULK_CHUNK_SIZE = 1000;
 // Max parallel fetches AEM makes from our markup content source per bulk job (AEM default is 100)
-const BULK_CONCURRENCY = 5;
+const BULK_CONCURRENCY = 3;
 const JOB_POLL_INTERVAL_MS = 5000;
 const JOB_TIMEOUT_MS = 60 * 60 * 1000;
 
