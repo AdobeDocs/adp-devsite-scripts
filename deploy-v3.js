@@ -113,9 +113,11 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   });
   const changedPaths = changes.filter(isAllowed).map(toPath);
   const deletedPaths = deletions.filter(isAllowed).map(toPath);
+  // Bulk jobs purge the CDN by the path's surrogate key, so pages must use their extensionless web path
+  const toWebPath = (path) => path.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '');
 
   const pageHost = `https://main--${edsSiteEnv}--adobedocs.${operation === 'live' ? 'aem.live' : 'aem.page'}`;
-  const toWebUrl = (path) => `${pageHost}${path.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '')}`;
+  const toWebUrl = (path) => `${pageHost}${toWebPath(path)}`;
 
   const runBulk = async (paths, isDelete) => {
     const label = isDelete ? `Delete ${operation}` : operation;
@@ -146,8 +148,8 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
       console.log('::endgroup::');
     }
   };
-  await runBulk(changedPaths, false);
-  await runBulk(deletedPaths, true);
+  await runBulk(changedPaths.map(toWebPath), false);
+  await runBulk(deletedPaths.map(toWebPath), true);
 
   // Adding clear cache on delete because Unpublishing doesn't reliably purge the CDN.
   if (deletedPaths.length) {
