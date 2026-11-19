@@ -151,29 +151,6 @@ module.exports = async ({ core, changes, deletions, operation, siteEnv, branch, 
   await runBulk(changedPaths.map(toWebPath), false);
   await runBulk(deletedPaths.map(toWebPath), true);
 
-  // Adding clear cache on delete because Unpublishing doesn't reliably purge the CDN.
-  if (deletedPaths.length) {
-    console.log(`::group:: Clear cache on ${deletedPaths.length} deleted path(s)`);
-    const cacheUrl = `${siteUrl}/cache`;
-    const cacheHeaders = siteEnv.includes('stage') ? { ...auth, 'x-content-source-authorization': branch } : auth;
-    for (const path of deletedPaths) {
-      try {
-        const res = await fetchWithRetry(`${cacheUrl}${path}`, { method: 'POST', headers: cacheHeaders });
-        if (res.ok) {
-          summaryData.push([path, `✅ Success`, `HTTP ${res.status} - Clear cache completed`]);
-        } else {
-          summaryData.push([path, `⚠️ Skipped`, `${describeError(res)} - Clear cache failed`]);
-          console.warn(`::warning::Clear cache failed for ${path}: ${describeError(res)}`);
-        }
-      } catch (error) {
-        summaryData.push([path, `⚠️ Skipped`, `${error.message} - Clear cache failed`]);
-        console.warn(`::warning::Clear cache failed for ${path}: ${error.message}`);
-      }
-      await delay();
-    }
-    console.log('::endgroup::');
-  }
-
   // Sort summaryData: Error first, then Success, then Skipped
   summaryData.sort((a, b) => {
     const statusA = a[1]; // Deploy Status column
