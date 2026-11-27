@@ -1,9 +1,11 @@
 /**
  * Builds an RSS 2.0 feed from a YAML changelog (e.g. src/pages/guides/changelog/changelog-data.yaml).
  *
- * The YAML's `rssfeed` key says where the feed lives, e.g.
- *   rssfeed: "https://raw.githubusercontent.com/AdobeDocs/cc-everywhere/refs/heads/main/src/pages/guides/changelog/feed.xml"
- * -> the feed is meant for src/pages/guides/changelog/feed.xml, and that URL is the feed's atom:link (self).
+ * The YAML's `rssfeed` key says where the feed lives, as a path under src/pages, e.g.
+ *   rssfeed: "/changelog/feed_new.xml"
+ * -> written to src/pages/changelog/feed_new.xml, with atom:link (self)
+ *    https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/src/pages/changelog/feed_new.xml
+ * A full raw GitHub or developer.adobe.com URL is accepted too.
  * Without `rssfeed`, the feed goes to `feedFilePath` (the workflow's feedPath input).
  *
  * An optional changelog-settings.yaml next to the data file supplies the page description and kind labels.
@@ -59,7 +61,8 @@ async function getYamlChangeLogXmlContent(owner, repo, githubToken, changeLogFil
     const siteBase = `${SITE_ORIGIN}${extractPathPrefix(configContent)}`;
 
     const branch = ref ? ref.replace(/^refs\/heads\//, "") : "main";
-    const repoRawBaseUrl = (owner && repo) ? `https://raw.githubusercontent.com/${owner}/${repo}/${branch}` : "";
+    // e.g. https://raw.githubusercontent.com/AdobeDocs/cc-everywhere/refs/heads/main
+    const repoRawBaseUrl = (owner && repo) ? `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${branch}` : "";
 
     // "src/pages/guides/changelog/changelog-data.yaml" -> page dir "guides/changelog"
     const changelogDir = changelogRepoDir.replace(/^src\/pages\/?/, "");
@@ -96,7 +99,11 @@ function toObject(value) {
  *   https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<repo path>
  *   https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<repo path>
  *   https://developer.adobe.com/<pathPrefix>/<page path>   -> src/pages/<page path>
- *   src/pages/feed.xml (a plain repo-relative path)
+ *   /changelog/feed.xml (a page path)                     -> src/pages/changelog/feed.xml
+ *   src/pages/changelog/feed.xml (a repo path)
+ *
+ * For a page or repo path the feed URL is built from the repo being deployed:
+ *   https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/src/pages/<page path>
  */
 function resolveFeedTarget(rssfeed, siteBase, defaultFeedPath = DEFAULT_FEED_PATH, repoRawBaseUrl = "") {
     const target = resolveFeedLocation(rssfeed, siteBase, defaultFeedPath, repoRawBaseUrl);
@@ -110,7 +117,12 @@ function resolveFeedTarget(rssfeed, siteBase, defaultFeedPath = DEFAULT_FEED_PAT
 }
 
 function resolveFeedLocation(rssfeed, siteBase, defaultFeedPath, repoRawBaseUrl) {
-    const toRepoPath = value => value.replace(/\\/g, "/").replace(/^\/+/, "");
+    // "/changelog/feed.xml" and "changelog/feed.xml" are page paths under src/pages;
+    // "src/pages/changelog/feed.xml" is already a repo path
+    const toRepoPath = value => {
+        const clean = value.replace(/\\/g, "/").replace(/^\.?\/+/, "");
+        return clean.startsWith(PAGES_DIR) ? clean : `${PAGES_DIR}${clean}`;
+    };
     const urlFor = repoPath => repoRawBaseUrl
         ? `${repoRawBaseUrl}/${repoPath}`
         : `${siteBase}/${repoPath.replace(PAGES_DIR, "")}`;
