@@ -409,5 +409,15 @@ module.exports = {
     extractFeedMetadata,
     extractPathPrefix,
     parseReleases,
-    buildFeed
+    buildFeed,
+    // shared with generate-rss-from-yaml.js
+    fetchFileContent,
+    escapeXml,
+    unescapeXml,
+    resolveAssetUrl,
+    resolveLink,
+    slugify,
+    SITE_ORIGIN,
+    PAGES_DIR,
+    CONFIG_PATH
 }
